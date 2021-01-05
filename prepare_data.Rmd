@@ -1,0 +1,206 @@
+---
+title: "mlflx data preparation"
+author: "Beni"
+date: "1/5/2021"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(ingestr)
+library(rbeni)
+```
+
+## Site selection
+
+Site selection was done based on:
+
+1. Site where fLUE method worked. I.e., site belongs to clusters cDD, cGR, cLS, or cNA, as described in Stocker et al. (2018) *New Phytologist*.
+
+*ADDITIONAL SELECTION STEP BELOW NOT APPLIED*
+2. Site was among the subset of homogenous sites, selected by Manuela Balzarolo. All sites with a homogenous surrounding are listed in file `~/data/FLUXNET-2015_Tier1/meta/fluxnet_quality_check_homogenous_OK_PRI_mbalzarolo.csv`. 
+
+Reproduce it as follows:
+
+Get sites where fLUE data is available
+```{r}
+df_sites <- read_csv("~/data/flue/flue_stocker18nphyt.csv")
+df_sites <- dplyr::select(df_sites, site, cluster) %>% unique()
+```
+
+Add meta information for sites
+```{r}
+df_sites <- df_sites %>% 
+  rename(sitename = site) %>% 
+  left_join( siteinfo_fluxnet2015, by="sitename" )
+```
+
+<!-- Get list of sites with homogenous surrounding and subset fLUE sites based on that list -->
+<!-- ```{r} -->
+<!-- df_homo <- read_csv("~/data/FLUXNET-2015_Tier1/meta/fluxnet_quality_check_homogenous_OK_PRI_mbalzarolo.csv") -->
+
+<!-- df_flue_sites <- df_flue_sites %>%  -->
+<!--   mutate(homogenous_mbalzarolo = sitename %in% df_homo$sitename) -->
+
+<!-- df_sub_homo <- df_flue_sites %>%  -->
+<!--   dplyr::filter( homogenous_mbalzarolo & cluster %in% c("cGR", "cDD", "cLS", "cNA") ) -->
+<!-- ``` -->
+
+Write to file
+```{r}
+if (!dir.exists("./data")) system("mkdir data")
+write_csv(df_sites, path = "./data/df_sites.csv")
+```
+
+Show sites on a map.
+```{r}
+plot_map_simpl() +
+  geom_point(data = df_sites, aes(x = lon, y = lat), color = "red")
+```
+
+## FLUXNET data
+
+### Read data
+
+```{r message=FALSE}
+read_dd_bysite <- function(site){
+  dir <- "~/data/FLUXNET-2015_Tier1/20191024/DD"
+  filn <- list.files(dir, pattern = paste0("FLX_", site, "_FLUXNET2015_FULLSET_DD_"), full.names = TRUE)
+  read_csv(filn)
+}
+list_df <- purrr::map(as.list(df_sites$sitename), ~read_dd_bysite(.))
+names(list_df) <- df_sites$sitename  # this makes it a named list
+```
+
+### Clean data
+
+DD-specific
+```{r}
+## function definition
+clean_fluxnet_dd <- function(df){
+  
+  df %>%
+
+    ## select only the variables we're interested in
+    dplyr::select(starts_with("TIMESTAMP"),
+           ends_with("_F"),
+           USTAR,
+           CO2_F_MDS,
+           # ends_with("QC"),
+           -contains("JSB"),
+           starts_with("SWC"),
+           GPP_NT_VUT_REF,
+           NEE_VUT_REF_QC
+           ) %>%
+
+    ## convert to a nice date object
+    mutate(TIMESTAMP = lubridate::ymd(TIMESTAMP)) %>%
+
+    ## set bad data to NA for multiple variables
+    mutate(
+      GPP_NT_VUT_REF = ifelse(NEE_VUT_REF_QC > 0.8, GPP_NT_VUT_REF, NA)
+      ) %>%
+    
+    ## set all -9999 to NA
+    na_if(-9999) %>%
+
+    ## drop QC variables (no longer needed), except NEE_VUT_REF_QC
+    dplyr::select(-ends_with("_QC"), NEE_VUT_REF_QC)
+}
+
+list_df <- purrr::map(list_df, ~clean_fluxnet_dd(.))
+list_df[1]
+```
+
+Make it a single flat dataframe. Has now shape 265,175 x 19.
+```{r}
+ddf <- list_df %>% 
+  bind_rows()
+```
+
+
+
+<!-- HH-specific -->
+<!-- ```{r} -->
+<!-- clean_fluxnet_hh <- function(df){ -->
+
+<!--   df <- df %>%  -->
+
+<!--     ## select only the variables we're interested in -->
+<!--     dplyr::select( -->
+<!--       starts_with("TIMESTAMP"), -->
+<!--       ends_with("_F"), -->
+<!--       CO2_F_MDS, -->
+<!--       PPFD_IN,  -->
+<!--       GPP_NT_VUT_REF, -->
+<!--       starts_with("SWC_F_MDS"), -->
+<!--       NEE_VUT_REF_QC, -->
+<!--       USTAR, VPD, RH, -->
+<!--       ends_with("QC"), -->
+<!--       -contains("JSB"), -->
+<!--       NIGHT -->
+<!--       ) %>%  -->
+
+<!--     ## convert to nice time object -->
+<!--     mutate_at(vars(starts_with("TIMESTAMP_")), ymd_hm) %>%  -->
+
+<!--     ## set bad data to NA for multiple variables -->
+<!--     mutate( -->
+<!--       GPP_NT_VUT_REF = ifelse(NEE_VUT_REF_QC %in% c(0,1), GPP_NT_VUT_REF, NA), -->
+<!--       TA_F = ifelse(TA_F_QC %in% c(0,1), TA_F, NA), -->
+<!--       SW_IN_F = ifelse(SW_IN_F_QC %in% c(0,1), SW_IN_F, NA), -->
+<!--       LW_IN_F = ifelse(LW_IN_F_QC %in% c(0,1,2), LW_IN_F, NA),   # relaxing filter criterion -->
+<!--       VPD_F = ifelse(VPD_F_QC %in% c(0,1), VPD_F, NA), -->
+<!--       PA_F = ifelse(PA_F_QC %in% c(0,1,2), PA_F, NA),   # relaxing filter criterion -->
+<!--       P_F = ifelse(P_F_QC %in% c(0,1,2), P_F, NA),   # relaxing filter criterion -->
+<!--       WS_F = ifelse(WS_F_QC %in% c(0,1), WS_F, NA), -->
+<!--       CO2_F_MDS = ifelse(CO2_F_MDS_QC %in% c(0,1), CO2_F_MDS, NA), -->
+<!--       SWC_F_MDS_1 = ifelse(SWC_F_MDS_1_QC %in% c(0,1), SWC_F_MDS_1, NA), -->
+<!--       SWC_F_MDS_2 = ifelse(SWC_F_MDS_2_QC %in% c(0,1), SWC_F_MDS_2, NA), -->
+<!--       SWC_F_MDS_3 = ifelse(SWC_F_MDS_3_QC %in% c(0,1), SWC_F_MDS_3, NA), -->
+<!--       SWC_F_MDS_4 = ifelse(SWC_F_MDS_4_QC %in% c(0,1), SWC_F_MDS_4, NA) -->
+<!--       ) %>% -->
+
+<!--     ## set all -9999 to NA -->
+<!--     na_if(-9999) %>% -->
+
+<!--     ## drop QC variables (no longer needed), except NEE_VUT_REF_QC -->
+<!--     dplyr::select(-ends_with("_QC"), NEE_VUT_REF_QC) -->
+
+<!--   return(df) -->
+<!-- } -->
+<!-- ``` -->
+
+
+
+
+## MODIS data
+
+This uses the ingestr package to download and interpolate MODIS time series.
+
+```{r}
+settings_modis <- get_settings_modis(
+  bundle            = "modis_fpar",
+  data_path         = "~/data/modis_subsets/",
+  method_interpol   = "loess",
+  keep              = TRUE,
+  overwrite_raw     = FALSE,
+  overwrite_interpol= TRUE
+  )
+
+df_modis_fpar <- ingest(
+  df_sites %>% slice(1:2), 
+  source = "modis",
+  settings = settings_modis, 
+  parallel = FALSE
+  # ncores = 2
+  )
+```
+
+Test plot.
+```{r}
+plot_fapar_ingestr_bysite(
+  df_modis_fpar$data[[2]], 
+  settings_modis)
+```
