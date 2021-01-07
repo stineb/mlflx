@@ -8,6 +8,8 @@ Ecosystem-atmosphere exchange fluxes of water vapour and CO2 are continuously me
 
 Data is provided here at daily resolution from a selection of sites ($N=71$, 265,177 data points, see `prepare_data.Rmd`), and paired with satellite data of the fraction of absorbed photosynthetically active radiation (fAPAR, product MODIS FPAR). This provides crucial complimentary information about vegetation structure and seasonally varying green foliage cover, responsible for photosynthesis and transpiration. The target variable is ecosystem photosynthesis, referred to as gross primary production (variable `GPP_NT_VUT_REF`). Available covariates are briefly described below. For more information, see [FLUXNET 2015 website](http://fluxnet.fluxdata.org/data/fluxnet2015-dataset/), and [Pastorello et al., 2020](https://www.nature.com/articles/s41597-020-0534-3), and the document `variable_codes_FULLSET_20160711.pdf` provided in this repository.
 
+The data is provided through this repository (`data/ddf_combined_mlflx.csv`).
+
 ![Site selection](./fig/map_sites_mlflx.png)
 
 ### Available variables
