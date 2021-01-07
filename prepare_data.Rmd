@@ -1,5 +1,5 @@
 ---
-title: "mlflx data preparation"
+title: "mlflx data"
 author: "Beni"
 date: "1/5/2021"
 output: html_document
@@ -11,6 +11,7 @@ library(tidyverse)
 library(ingestr)
 library(rbeni)
 ```
+
 
 ## Site selection
 
@@ -57,6 +58,7 @@ Show sites on a map.
 ```{r}
 plot_map_simpl() +
   geom_point(data = df_sites, aes(x = lon, y = lat), color = "red")
+ggsave("fig/map_sites_mlflx.png", width = 6, height = 4)
 ```
 
 ## FLUXNET data
@@ -116,10 +118,13 @@ list_df[1]
 Make it a single flat dataframe. Has now shape 265,175 x 19.
 ```{r}
 ddf <- list_df %>% 
-  bind_rows()
+  bind_rows(.id = "sitename")
 ```
 
-
+Write to file.
+```{r}
+write_csv(ddf, path = "data/ddf_fluxnet_mlflx.csv")
+```
 
 <!-- HH-specific -->
 <!-- ```{r} -->
@@ -173,11 +178,10 @@ ddf <- list_df %>%
 <!-- ``` -->
 
 
-
-
 ## MODIS data
 
-This uses the ingestr package to download and interpolate MODIS time series.
+This uses the ingestr package to download and interpolate MODIS time series. 
+This is also implemented in the download script `rscript_ingest_modis.R`.
 
 ```{r}
 settings_modis <- get_settings_modis(
@@ -190,7 +194,7 @@ settings_modis <- get_settings_modis(
   )
 
 df_modis_fpar <- ingest(
-  df_sites %>% slice(1:2), 
+  df_sites, 
   source = "modis",
   settings = settings_modis, 
   parallel = FALSE
@@ -201,6 +205,70 @@ df_modis_fpar <- ingest(
 Test plot.
 ```{r}
 plot_fapar_ingestr_bysite(
-  df_modis_fpar$data[[2]], 
+  df_modis_fpar$data[[64]] %>% 
+    tail(1200), 
   settings_modis)
 ```
+
+Write to file.
+```{r}
+df_modis_fpar %>% 
+  unnest(data) %>% 
+  dplyr::select(sitename, date, fpar_loess = loess, fpar_linear = linear) %>% 
+  write_csv(path = "data/ddf_fpar_modis_mlflx.csv")
+```
+
+Combine and write to file.
+```{r}
+ddf_mlflx <- df_modis_fpar %>% 
+  unnest(data) %>% 
+  dplyr::select(sitename, date, fpar_loess = loess, fpar_linear = linear) %>% 
+  left_join(
+    ddf %>% 
+      rename(date = TIMESTAMP),
+    by = c("sitename", "date")
+  ) %>% 
+  left_join(df_sites %>% dplyr::select(sitename, lon, lat), by = "sitename")
+
+write_csv(ddf_mlflx, path = "data/ddf_combined_mlflx.csv")
+```
+
+Visualise missing data.
+```{r}
+visdat::vis_miss(ddf_mlflx, warn_large_data = FALSE)
+```
+
+Quite many missing fapar data.
+```{r}
+sites_missing_fpar <- ddf_mlflx %>% 
+  dplyr::filter(is.na(fpar_loess)) %>% 
+  pull(sitename) %>% 
+  unique()
+
+gg <- ddf_mlflx %>% 
+  dplyr::filter(sitename %in% sites_missing_fpar) %>% 
+  group_by(sitename) %>% 
+  nest() %>% 
+  mutate(gg = purrr::map(data, ~vis_missing(.))) %>% 
+  mutate(gg = purrr::map2(gg, sitename, ~{.x + labs(title = .y)}))
+
+gg$gg[sample(1:nrow(gg), size = 10)]
+```
+
+FR-LBr, for example, has much missing fapar data.
+```{r}
+plot_fapar_ingestr_bysite(
+  df_modis_fpar$data[[which(df_modis_fpar$sitename == "FR-LBr")]], 
+  settings_modis)
+```
+
+Data downloaded (in `raw/`) is only starting in 2002-07-04. Why not from Feb. 2000 (normal modis era start)?
+```{r}
+library(MODISTools)
+mt_dates(product = "MCD15A3H", 
+         lat = df_sites %>% dplyr::filter(sitename == "FR-LBr") %>% pull(lat), 
+         lon = df_sites %>% dplyr::filter(sitename == "FR-LBr") %>% pull(lon)
+         )
+```
+
+Ok, yes. Starts only in 2002.

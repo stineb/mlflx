@@ -5,7 +5,7 @@ library(ingestr)
 
 ncores <- parallel::detectCores()
 
-df_sites <- write_csv("./data/df_sites.csv")
+df_sites <- read_csv("./data/df_sites.csv")
 
 settings_modis <- get_settings_modis(
   bundle            = "modis_fpar",
@@ -17,9 +17,9 @@ settings_modis <- get_settings_modis(
 )
 
 df_modis_fpar <- ingest(
-  df_sites,
+  siteinfo_fluxnet2015 %>% dplyr::filter(sitename != "CH-Lae"),
   source = "modis",
   settings = settings_modis,
-  parallel = TRUE,
-  ncores = ncores
+  parallel = FALSE,
+  ncores = 1
 )
