@@ -218,6 +218,8 @@ df_modis_fpar %>%
   write_csv(path = "data/ddf_fpar_modis_mlflx.csv")
 ```
 
+## Combine and write
+
 Combine and write to file.
 ```{r}
 ddf_mlflx <- df_modis_fpar %>% 
@@ -228,7 +230,7 @@ ddf_mlflx <- df_modis_fpar %>%
       rename(date = TIMESTAMP),
     by = c("sitename", "date")
   ) %>% 
-  left_join(df_sites %>% dplyr::select(sitename, lon, lat), by = "sitename")
+  left_join(df_sites %>% dplyr::select(-year_start, -year_end, -cluster), by = "sitename")
 
 write_csv(ddf_mlflx, path = "data/ddf_combined_mlflx.csv")
 ```
