@@ -8,8 +8,8 @@ output: html_document
 
 ```{r setup, include=FALSE}
 library(tidyverse)
-library(ingestr)
-library(rbeni)
+library(ingestr)  # https://github.com/stineb/ingestr
+library(rbeni)    # https://github.com/stineb/rbeni
 ```
 
 
@@ -26,7 +26,7 @@ Reproduce it as follows:
 
 Get sites where fLUE data is available
 ```{r}
-df_sites <- read_csv("~/data/flue/flue_stocker18nphyt.csv")
+df_sites <- read_csv("~/data/flue/flue_stocker18nphyt.csv")  # dataset available here: https://zenodo.org/record/1158524#.YFn9fkhKjUI
 df_sites <- dplyr::select(df_sites, site, cluster) %>% unique()
 ```
 
@@ -65,6 +65,8 @@ ggsave("fig/map_sites_mlflx.png", width = 6, height = 4)
 
 ### Read data
 
+Original data files are shared with you (students) as a zipped file via Cifex.
+
 ```{r message=FALSE}
 read_dd_bysite <- function(site){
   dir <- "~/data/FLUXNET-2015_Tier1/20191024/DD"
@@ -101,6 +103,7 @@ clean_fluxnet_dd <- function(df){
 
     ## set bad data to NA for multiple variables
     mutate(
+      GPP_NT_VUT_REF_raw = GPP_NT_VUT_REF,
       GPP_NT_VUT_REF = ifelse(NEE_VUT_REF_QC > 0.8, GPP_NT_VUT_REF, NA)
       ) %>%
     
@@ -121,10 +124,182 @@ ddf <- list_df %>%
   bind_rows(.id = "sitename")
 ```
 
+Visualise missing data.
+```{r}
+library(visdat)
+ddf %>% 
+  vis_miss(warn_large_data = FALSE)
+```
+Some data `GPP_NT_VUT_REF` is still missing even after commenting out the l. 102 above. Why?
+
+There seem to be sequences of dates missing, not random individual dates. Plot a few examples (red: unfiltered data, black: filtered using `NEE_VUT_REF_QC > 0.8`, see above):
+
+```{r}
+sites <- ddf %>% dplyr::filter(is.na(GPP_NT_VUT_REF)) %>% pull(sitename) %>% unique()
+ddf %>% 
+  dplyr::filter(sitename %in% sites[1]) %>% 
+  ggplot() +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
+```
+In this case, it's probably because the data before 2010 is just not available. Best to just drop all missing rows (affects only the head of the data frame).
+
+```{r}
+ddf %>% 
+  dplyr::filter(sitename %in% sites[2]) %>% 
+  ggplot() +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
+```
+In this case, a sequence at the start and another sequence in the middle are missing. The missing rows at the start (head) may just be dropped. The ones in the middle may better be imputed to not lose also the four years data (1999 - 2002). What's the most suitable imputation method? Maybe k-nearest neighbours? I let this decision up to you.
+
+```{r}
+ddf %>% 
+  dplyr::filter(sitename %in% sites[3]) %>% 
+  ggplot() +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
+```
+
+Remove missing data at the head, and in this case also at the tail.
+
+```{r}
+ddf %>% 
+  dplyr::filter(sitename %in% sites[4]) %>% 
+  ggplot() +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
+```
+This is very weird. Data seems to be missing for some years, but missing cells are not NA but actually have a numeric value (-0.195826000) in this case. You'll detect this by looking at weirdly high frequency of certain values in the data:
+```{r}
+ddf %>% 
+  dplyr::filter(sitename %in% sites[4]) %>% 
+  group_by(GPP_NT_VUT_REF) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count))
+```
+
+```{r}
+ddf %>% 
+  dplyr::filter(sitename %in% sites[5]) %>% 
+  ggplot() +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
+```
+This is so weird that we have to make an educated guess and crudely throw away some data. E.g. drop all rows before mid-2007. 
+```{r}
+ddf %>% 
+  dplyr::filter(sitename %in% sites[5] & TIMESTAMP > lubridate::ymd("2007-07-01")) %>% 
+  ggplot() +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
+```
+
+```{r}
+ddf %>% 
+  dplyr::filter(sitename %in% sites[7]) %>% 
+  ggplot() +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
+```
+This is weird, too. Let's just use years 2001 - 2006.
+```{r}
+ddf %>% 
+  dplyr::filter(sitename %in% sites[7] & TIMESTAMP > lubridate::ymd("2001-01-01") & TIMESTAMP < lubridate::ymd("2007-01-01")) %>% 
+  ggplot() +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
+```
+
+```{r}
+ddf %>% 
+  dplyr::filter(sitename %in% sites[8]) %>% 
+  ggplot() +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
+```
+Looks good. Just remove missing head.
+
+```{r}
+ddf %>% 
+  dplyr::filter(sitename %in% sites[8]) %>% 
+  ggplot() +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
+```
+Same here.
+
+```{r}
+ddf %>% 
+  dplyr::filter(sitename %in% sites[9]) %>% 
+  ggplot() +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
+```
+
+Again: weird. Let's just use years 2001-2006 or fill missing dates in between with KNN. Note: In case years after 2006 are dropped, it may still be useful to keep data for years 2012-2014 for validation.
+
+```{r}
+ddf %>% 
+  dplyr::filter(sitename %in% sites[9] & TIMESTAMP > lubridate::ymd("2001-01-01") & TIMESTAMP < lubridate::ymd("2007-01-01")) %>% 
+  ggplot() +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
+```
+
+```{r}
+ddf %>% 
+  dplyr::filter(sitename %in% sites[10]) %>% 
+  ggplot() +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
+```
+Again weirdly repeated values in year 2010. Make sure to drop them. 
+
+```{r}
+ddf %>% 
+  dplyr::filter(sitename %in% sites[11]) %>% 
+  ggplot() +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
+  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
+```
+This one is very challenging. Consider just the last two years or drop data from this site entirely.
+
 Write to file.
 ```{r}
-write_csv(ddf, path = "data/ddf_fluxnet_mlflx.csv")
+write_csv(ddf, path = "data/ddf_fluxnet_mlflx_20210323.csv")
 ```
+
+## Soil moisture data
+
+`SWC_` data is missing for many dates, in particular for the deeper soil layers. Alternatively, one may use modelled soil water content directly as a predictor or impute missing observed `SWC_` data using (somehow) modeled values (must account for different units, bias, etc.).
+
+`~/data/rsofun_benchmarking/df_output_allsites_v3.3.Rdata` is prepared by `rsofun/benchmarking/tag_v3.3/benchmark_gpp_FLUXNET2015_ensemble_v3.3.Rmd`.
+
+```{r}
+ddf <- read_csv("data/ddf_fluxnet_mlflx_20210323.csv")
+load("~/data/rsofun_benchmarking/df_output_allsites_v3.3.Rdata")    # loads df_output_allsites
+df_soilm <- df_output_allsites %>% 
+  unnest(data) %>% 
+  dplyr::select(sitename, TIMESTAMP = date, wscal)
+
+## some sites are not available from the modelled dataset:
+df_sites$sitename[!(df_sites$sitename %in% unique(df_soilm$sitename))]
+
+## combine
+ddf <- ddf %>% 
+  left_join(df_soilm, by = c("sitename", "TIMESTAMP"))
+
+## show missing
+ddf %>% 
+  dplyr::select(GPP_NT_VUT_REF, wscal) %>% 
+  vis_miss()
+```
+Write to file now including column wscal (water scalar, 0 = dry, 1 = 100% water holding capacity of the soil).
+```{r}
+write_csv(ddf, path = "data/ddf_fluxnet_mlflx_wscal_20210323.csv")
+```
+
 
 <!-- HH-specific -->
 <!-- ```{r} -->
@@ -180,6 +355,41 @@ write_csv(ddf, path = "data/ddf_fluxnet_mlflx.csv")
 
 ## MODIS data
 
+### MOD09A1
+
+Get MOD09A1 reflectance data from [ORNL DAAC](https://lpdaac.usgs.gov/products/mod09a1v006/), using the [MODISTools R package](https://github.com/ropensci/MODISTools).
+
+```{r}
+library(MODISTools)
+
+## list all products (note MOD09A1)
+mt_products()
+
+## list all available bands of MOD09A1
+mt_bands(product = "MOD09A1")
+
+## list dates for one site
+mt_dates(product = "MOD09A1", lat = df_sites$lat[1], lon = df_sites$lon[1]) %>% 
+  pull(calendar_date) %>% 
+  range()
+```
+
+Get data for all available dates for all of our sites.
+```{r}
+# test batch download
+subsets <- mt_batch_subset(df = df_sites %>% 
+                             rename(site_name = sitename) %>% 
+                             slice(1:2),
+                           product = "MOD09A1",
+                           band = c("sur_refl_b01", "sur_refl_b02"),
+                           internal = TRUE,
+                           start = "2000-02-18",
+                           end = "2021-03-01")
+
+```
+
+### fAPAR
+
 This uses the ingestr package to download and interpolate MODIS time series. 
 This is also implemented in the download script `rscript_ingest_modis.R`.
 
@@ -222,9 +432,10 @@ df_modis_fpar %>%
 
 Combine and write to file.
 ```{r}
+ddf <- read_csv("data/ddf_fluxnet_mlflx_wscal_20210323.csv")
+df_modis_fpar <- read_csv("data/ddf_fpar_modis_mlflx.csv")
+
 ddf_mlflx <- df_modis_fpar %>% 
-  unnest(data) %>% 
-  dplyr::select(sitename, date, fpar_loess = loess, fpar_linear = linear) %>% 
   left_join(
     ddf %>% 
       rename(date = TIMESTAMP),
@@ -232,7 +443,7 @@ ddf_mlflx <- df_modis_fpar %>%
   ) %>% 
   left_join(df_sites %>% dplyr::select(-year_start, -year_end, -cluster), by = "sitename")
 
-write_csv(ddf_mlflx, path = "data/ddf_combined_mlflx.csv")
+write_csv(ddf_mlflx, path = "data/ddf_combined_mlflx_20210323.csv")
 ```
 
 Visualise missing data.
