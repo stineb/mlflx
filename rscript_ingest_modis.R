@@ -5,7 +5,7 @@ library(ingestr)
 
 ncores <- parallel::detectCores()
 
-df_sites <- write_csv("./data/df_sites.csv")
+df_sites <- read_csv("./data/df_sites.csv")
 
 settings_modis <- get_settings_modis(
   bundle            = "modis_fpar",
@@ -20,6 +20,6 @@ df_modis_fpar <- ingest(
   df_sites,
   source = "modis",
   settings = settings_modis,
-  parallel = TRUE,
+  parallel = FALSE,
   ncores = ncores
 )
