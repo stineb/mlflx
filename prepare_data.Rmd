@@ -400,14 +400,15 @@ settings_modis <- get_settings_modis(
   method_interpol   = "loess",
   keep              = TRUE,
   overwrite_raw     = FALSE,
-  overwrite_interpol= TRUE
+  overwrite_interpol= FALSE,
+  n_focal           = 0
   )
 
 df_modis_fpar <- ingest(
   df_sites, 
   source = "modis",
   settings = settings_modis, 
-  parallel = FALSE
+  parallel = FALSE,
   # ncores = 2
   )
 ```
@@ -425,7 +426,7 @@ Write to file.
 df_modis_fpar %>% 
   unnest(data) %>% 
   dplyr::select(sitename, date, fpar_loess = loess, fpar_linear = linear) %>% 
-  write_csv(path = "data/ddf_fpar_modis_mlflx.csv")
+  write_csv(path = "data/ddf_fpar_modis_mlflx_20210323.csv")
 ```
 
 ## Combine and write
@@ -433,7 +434,7 @@ df_modis_fpar %>%
 Combine and write to file.
 ```{r}
 ddf <- read_csv("data/ddf_fluxnet_mlflx_wscal_20210323.csv")
-df_modis_fpar <- read_csv("data/ddf_fpar_modis_mlflx.csv")
+df_modis_fpar <- read_csv("data/ddf_fpar_modis_mlflx_20210323.csv")
 
 ddf_mlflx <- df_modis_fpar %>% 
   left_join(
