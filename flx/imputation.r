@@ -9,3 +9,5 @@ idvars <- c("sitename", "date")
 ncpus = 8
 m = ncpus * 10      # 80 sets, see Bagging
 df.out = amelia(df, idvars = idvars, m = m, parallel = 'multicore', ncpus = ncpus)
+
+write.amelia(df.out, file.stem = "data_imp")
