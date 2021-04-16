@@ -1,3 +1,4 @@
+import pandas as pd
 
 def normalize(df):
     result = df.copy()

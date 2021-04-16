@@ -1,12 +1,13 @@
 from model.model import WaveNet
 from model.metric import r2_score
-from utils.preprocess import batch_by_site
+from utils.preprocess import batch_by_site, normalize
 from data_loader.data_loaders import make_batches
 from tqdm import tqdm
 import json
 import torch
+import pandas as pd
 
-DEVICE = "cuda"
+DEVICE = "cpu"
 
 # Load Configs
 with open('config.json', 'r') as config_file:
@@ -47,7 +48,6 @@ for s in tqdm(range(len(sites_df))):
       test_loss = 0.0
       train_mse = 0.0
       test_mse = 0.0
-      start = time.time()
 
       model.train()
       for (x, y) in zip(X_train, y_train):
