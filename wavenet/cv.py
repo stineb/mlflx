@@ -6,9 +6,15 @@ from tqdm import tqdm
 import json
 import torch
 import pandas as pd
+import argparse
 
-DEVICE = "cpu"
 
+parser = argparse.ArgumentParser(description='CV wavenet')
+
+parser.add_argument('-d', '--device', default=None, type=str,
+                      help='indices of GPUs to enable (default: all)')
+args = parser.parse_args()
+DEVICE = torch.device("cuda:" + args.device)
 # Load Configs
 with open('config.json', 'r') as config_file:
     config_data = json.load(config_file)
@@ -79,7 +85,7 @@ for s in tqdm(range(len(sites_df))):
 
               test_loss += loss.item()
               test_mse += torch.mean((y - pred) ** 2)
-              r2.append(r2_loss(pred,y))
+              r2.append(r2_score(pred,y))
 
       train_losses.append(train_loss / len(X_train))
       test_losses.append(test_loss / len(X_test))
