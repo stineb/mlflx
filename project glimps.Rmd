@@ -1,0 +1,145 @@
+---
+title: "Exploratary analysis"
+output: html_document
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(tidyverse)
+ddf<- read_csv("ddf_combined_mlflx.csv")
+
+#see the shape of the dataset
+nrow(ddf)#265177
+ncol(ddf)#31
+```
+
+
+```{r missing data}
+#Exploring missing data
+## so there is not that that much actually the data about Soil water content.
+##(only 5 of them from top layer i.e."SWC_F_MDS_1")
+## also no data collected under variable "igbp_land_use" &"plant_functional_type"
+## target variable also has missing value
+
+missing_stat<-matrix(NA,ncol(ddf),2)
+for(i in 1:ncol(ddf)){
+  missing_length<-length(na.omit(pull(ddf[,i])))
+  missing_stat[i,2]<-missing_length}                   
+missing_stat[,1]<-colnames(ddf)
+colnames(missing_stat)<-c("Covariate names","Obtained data")
+#table of them by category
+#we remove the column with very low data collected 
+seq_colum_vlow<-which(as.numeric(missing_stat[,2])<1000)
+ddf_removecolumn<-ddf[,-seq_colum_vlow]
+
+```
+
+
+```{r set the basic model}
+#########################################################################
+## some simple methods as basic line
+# problem met:koeppen_code not seem by the training model when it is divided by site
+#
+set.seed(100)
+summary(ddf_removecolumn$GPP_NT_VUT_REF)#it has negative value to -10.54 to 22.81 and mean is 3.89
+(table_sitename<-as.table(table(ddf_removecolumn$sitename)))
+(nrow(table_sitename))#there are 71 site namne
+
+
+##set up train and test dataset by site
+set.seed(125)
+ind<-sample(seq(1,71,1),71)
+ind_train_site<-ind[1:61]
+ind_test_site<-ind[62:71]
+sitename_vec<-unique(ddf_removecolumn$sitename)
+ind_train_sitename<-sitename_vec[ind_train_site]
+ind_test_sitename<-sitename_vec[ind_test_site]
+
+##generate the training and testing samples
+
+#remove the ones with no collected response variables
+ddf_removecolumn_1<-ddf_removecolumn[-which(is.na(ddf_removecolumn$GPP_NT_VUT_REF)),]#remove 61516
+
+
+x_train<-ddf_removecolumn_1[ddf_removecolumn_1$sitename%in%ind_train_sitename,]
+y_train<-x_train$GPP_NT_VUT_REF
+
+which(colnames(x_train)=="GPP_NT_VUT_REF")
+x_train<-x_train[,-which(colnames(x_train)=="GPP_NT_VUT_REF")]
+x_train<-x_train[,-which(colnames(x_train)=="sitename")]
+
+x_test<-ddf_removecolumn_1[ddf_removecolumn_1$sitename%in%ind_test_sitename,]
+y_test<-x_test$GPP_NT_VUT_REF
+x_test<-x_test[,-which(colnames(x_test)=="sitename")]
+x_test<-x_test[,-which(colnames(x_test)=="GPP_NT_VUT_REF")]
+
+
+
+
+#remove the column we dont need which are all almost id
+seq_column_areid<-which(as.numeric(missing_stat[,2])==265177)
+remove_columnname<-missing_stat[seq_column_areid,1]
+
+x_train<-x_train[,-which(colnames(x_train)%in%remove_columnname)]
+x_test<-x_test[,-which(colnames(x_test)%in%remove_columnname)]
+
+1-nrow(x_test)/nrow(x_train)#0.88data to train the model
+
+```
+
+
+```{r} 
+model_reg<-lm(y_train~.,data=x_train,na.action=na.omit)
+summary(model_reg)
+predict_y<-predict.lm(model_reg,x_test)
+
+sum((predict_y-y_test)^2,na.rm = TRUE)#89765.52
+
+
+```
+
+
+
+```{r}
+##Classification and Regression Trees (CART)（Recursive Partitioning and Regression Trees）
+# load the package
+library(rpart)
+# fit model
+fit <- rpart(y_train~., data=x_train, control=rpart.control(minsplit=5))
+# summarize the fit
+summary(fit)
+# make predictions
+predictions <- predict(fit, x_test)
+# summarize accuracy
+mse <- mean((y_test - predictions)^2)
+
+print(mse)#5.97991？？？
+
+```
+
+
+```{r}
+library(mgcv)#Generalized additive models,automatically fit a spline regression.
+# Build the model
+model <- gam(y_train ~ s(fpar_loess)+s(fpar_linear)+TA_F+SW_IN_F+LW_IN_F+VPD_F+PA_F+WS_F+USTAR+CO2_F_MDS+ NEE_VUT_REF_QC, data = x_train)
+# Make predictions
+predictions <- predict(model,x_test)
+# Model performance
+mse <- mean((y_test - predictions)^2,na.rm = TRUE)
+print(mse)#4.967724
+
+```
+
+
+```{r}
+
+
+
+
+```
+
+
+
+
+
