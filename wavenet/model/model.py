@@ -69,7 +69,7 @@ class WaveNet(nn.Module):
         super().__init__()
         self.causal = CausalConv1d(in_channels, res_channels, 2, 1)
         self.residual_blocks = [[] for i in range(n_dilations)]
-        self.densenet = DensNet(9).to(device)
+        self.densenet = DensNet(in_channels).to(device)
         self.n_residuals = n_residuals
         self.n_dilations = n_dilations
 
