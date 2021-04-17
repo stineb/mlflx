@@ -97,7 +97,7 @@ for s in tqdm(range(len(sites_df))):
       test_losses.append(test_loss / len(X_test))
   cv_r2.append(max(r2))
   cv_mse.append(min(test_losses))
-  print(f"Test Site: {df.index.unique()[s]}  MSE: {cv_mse[s]} R2: {cv_rd[s]}")
+  print(f"Test Site: {df.index.unique()[s]}  MSE: {cv_mse[s]} R2: {cv_r2[s]}")
   print("CV MSE cumulative mean: ", np.mean(cv_mse)," +-", np.std(cv_mse))
   print("CV R2 cumulative mean: ", np.mean(cv_r2), " +- ", np.std(cv_r2))
   print("-------------------------------------------------------------------")
