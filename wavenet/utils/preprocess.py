@@ -13,7 +13,7 @@ def batch_by_site(df):
     for i in range(len(sites_df)):
         sites_df[i]['date'] = pd.to_datetime(sites_df[i]['date'], format="%Y-%m-%d")
         sites_df[i] = sites_df[i].set_index("date")
-        sites_df[i] = sites_df[i].drop(columns=["lon","lat","plant_functional_type","igbp_land_use","koeppen_code","classid","c4"])
+        sites_df[i] = sites_df[i].drop(columns=["lon","lat","plant_functional_type","igbp_land_use","koeppen_code","classid","c4","elv","whc"])
         sites_df[i] = sites_df[i].reset_index(drop=True)
     return sites_df
 
