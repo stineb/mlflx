@@ -1,7 +1,6 @@
 from model.model import WaveNet
 from model.metric import r2_score
-from utils.preprocess import batch_by_site, normalize
-from data_loader.data_loaders import make_batches
+from utils.preprocess import batch_by_site, normalize, make_batches
 from tqdm import tqdm
 import json
 import torch
@@ -11,20 +10,28 @@ import numpy as np
 
 parser = argparse.ArgumentParser(description='CV wavenet')
 
-parser.add_argument('-d', '--device', default=None, type=str,
-                      help='indices of GPUs to enable (default: all)')
+parser.add_argument('-gpu', '--gpu', default=None, type=str,
+                      help='indices of GPU to enable ')
+
+parser.add_argument('-di', '--n_dilations', default=None, type=int,
+                      help='number of dilations (wavenet)')
+
+parser.add_argument('-rb', '--n_residuals', default=None, type=int,
+                      help='number of residual blocks (wavenet)')
+parser.add_argument('-e', '--n_epochs', default=None, type=int,
+                      help='number of cv epochs (wavenet)')
+
 args = parser.parse_args()
-DEVICE = torch.device("cuda:" + args.device)
+DEVICE = torch.device("cuda:" + args.gpu)
 # Load Configs
 with open('config.json', 'r') as config_file:
     config_data = json.load(config_file)
 
 df = pd.read_csv(config_data["data_dir"],index_col=0)
 sites_df = batch_by_site(df)
-
+n_features  = len(sites_df[0].columns)-1
 cv_mse = []
 cv_r2 = []
-
 for s in tqdm(range(len(sites_df))):
   sites_to_train = list(range(0, len(sites_df)))
   sites_to_train.remove(s)
@@ -41,15 +48,14 @@ for s in tqdm(range(len(sites_df))):
 
   X_train, y_train = make_batches(train)
   X_test, y_test = make_batches(test)
-
-  model = WaveNet(6, 4, 9, 128, DEVICE).to(DEVICE)
+  model = WaveNet(args.n_dilations, args.n_residuals, n_features, 128, DEVICE).to(DEVICE)
   criterion = torch.nn.MSELoss()
   optimizer = torch.optim.Adam(model.parameters())
 
   train_losses = []
   test_losses = []
   r2 = []
-  for epoch in range(50):
+  for epoch in range(args.n_epochs):
       train_loss = 0.0
       test_loss = 0.0
       train_mse = 0.0
@@ -91,5 +97,8 @@ for s in tqdm(range(len(sites_df))):
       test_losses.append(test_loss / len(X_test))
   cv_r2.append(max(r2))
   cv_mse.append(min(test_losses))
-  print("\nCV MSE cumulative mean: ", np.mean(cv_mse))
-  print("CV R2 cumulative mean: ", np.mean(cv_r2))
+  print(f"Test Site: {df.index.unique()[s]}  MSE: {cv_mse[s]} R2: {cv_rd[s]}")
+  print("CV MSE cumulative mean: ", np.mean(cv_mse)," +-", np.std(cv_mse))
+  print("CV R2 cumulative mean: ", np.mean(cv_r2), " +- ", np.std(cv_r2))
+  print("-------------------------------------------------------------------")
+ 

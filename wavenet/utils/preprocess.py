@@ -17,3 +17,16 @@ def batch_by_site(df):
         sites_df[i] = sites_df[i].reset_index(drop=True)
     return sites_df
 
+
+# Split data in batches
+def make_batches(array_of_sites):
+    X_seqs = []
+    y_seqs = []
+    batches = []
+    for site in array_of_sites:
+        X_values = site.drop(columns=["GPP_NT_VUT_REF"]).to_numpy()
+        y_values = site['GPP_NT_VUT_REF'].to_numpy()
+        X_seqs.append(X_values)
+        y_seqs.append(y_values)
+
+    return X_seqs, y_seqs
