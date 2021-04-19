@@ -35,7 +35,7 @@ for land in tqdm(lands):
     sites_df = batch_by_site(df[df.igbp_land_use == land])
     n_features  = len(sites_df[0].columns)-1
     if len(sites_df) < 2:
-        break
+        continue
     for s in range(len(sites_df)):
         sites_to_train = list(range(0, len(sites_df)))
         sites_to_train.remove(s)
