@@ -35,7 +35,7 @@ for land in tqdm(lands):
     cv_r2 = []
     sites_df = batch_by_site(df[df.igbp_land_use == land])
     n_features  = len(sites_df[0].columns)-1
-    for s in tqdm(range(len(sites_df))):
+    for s in range(len(sites_df)):
         sites_to_train = list(range(0, len(sites_df)))
         sites_to_train.remove(s)
         site_to_test = [s]
@@ -100,6 +100,6 @@ for land in tqdm(lands):
             test_losses.append(test_loss / len(X_test))
         cv_r2.append(max(r2))
         cv_mse.append(min(test_losses))
-print(f"IGBP_LAND_USE: {land}  MSE: {cv_mse.mean()} +- {cv_mse.std()} R2: {cv_r2.mean()} +- {cv_r2.std()}")
-print("-------------------------------------------------------------------")
+    print(f"IGBP_LAND_USE: {land}  MSE: {cv_mse.mean()} +- {cv_mse.std()} R2: {cv_r2.mean()} +- {cv_r2.std()}")
+    print("-------------------------------------------------------------------")
     
