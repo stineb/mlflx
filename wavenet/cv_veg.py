@@ -100,6 +100,6 @@ for land in tqdm(lands):
             test_losses.append(test_loss / len(X_test))
         cv_r2.append(max(r2))
         cv_mse.append(min(test_losses))
-    print(f"IGBP_LAND_USE: {land}  MSE: {cv_mse.mean()} +- {cv_mse.std()} R2: {cv_r2.mean()} +- {cv_r2.std()}")
+    print(f"IGBP_LAND_USE: {land}  MSE: {np.mean(cv_mse)} +- {np.std(cv_mse)} R2: {np.mean(cv_r2)} +- {np.mean(cv_r2)}")
     print("-------------------------------------------------------------------")
     
