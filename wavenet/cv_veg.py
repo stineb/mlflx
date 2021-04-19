@@ -29,12 +29,13 @@ with open('config.json', 'r') as config_file:
 
 df = pd.read_csv(config_data["data_dir"],index_col=0).dropna()
 lands = df['igbp_land_use'].unique()
-
 for land in tqdm(lands):
     cv_mse = []
     cv_r2 = []
     sites_df = batch_by_site(df[df.igbp_land_use == land])
     n_features  = len(sites_df[0].columns)-1
+    if len(sites_df) < 2:
+        break
     for s in range(len(sites_df)):
         sites_to_train = list(range(0, len(sites_df)))
         sites_to_train.remove(s)
@@ -100,6 +101,6 @@ for land in tqdm(lands):
             test_losses.append(test_loss / len(X_test))
         cv_r2.append(max(r2))
         cv_mse.append(min(test_losses))
-    print(f"IGBP_LAND_USE: {land}  MSE: {np.mean(cv_mse)} +- {np.std(cv_mse)} R2: {np.mean(cv_r2)} +- {np.mean(cv_r2)}")
+    print(f"IGBP_LAND_USE: {land}  MSE: {np.mean(cv_mse):.2f} +- {np.std(cv_mse):.2f} R2: {np.mean(cv_r2):.2f} +- {np.mean(cv_r2):.2f}")
     print("-------------------------------------------------------------------")
     
