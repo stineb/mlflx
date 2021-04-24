@@ -131,7 +131,7 @@ for s in tqdm(range(len(sites_df))):
             x = x.squeeze(1)
             
             loss, recon_loss, kl_loss, reg_loss = loss_fn(outputs, x, y_pred, y, mean, logvar, 1)
-            r2.append(r2_score(y_true=y.detach().numpy(), y_pred=y_pred.detach().numpy()))
+            r2.append(r2_score(y_true=y.detach().cpu().numpy(), y_pred=y_pred.detach().cpu().numpy()))
 
 
 
