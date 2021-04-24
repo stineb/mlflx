@@ -1,4 +1,4 @@
-from model.model import EncoderWithTime, Reparametrize, DecoderNoTime
+from model.model import EncoderWithTime, Reparametrize, DecoderNoTime, Regressor
 from sklearn.metrics import r2_score
 from utils.preprocess import batch_by_site, normalize
 from tqdm import tqdm
