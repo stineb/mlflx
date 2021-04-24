@@ -1,6 +1,5 @@
 from model.model import EncoderWithTime, Reparametrize, DecoderNoTime
 from sklearn.metrics import r2_score
-
 from utils.preprocess import batch_by_site, normalize
 from tqdm import tqdm
 import json
@@ -58,7 +57,7 @@ y_col = ['GPP_NT_VUT_REF']
 ENCODER_OUTPUT_SIZE = 256
 LATENT_SIZE = 8
 CONDITIONAL_FEATURES = len(x_time_invariant_cols)
-
+CONDITION_DECODER = True
 INPUT_FEATURES = len(x_cols)
 
 
