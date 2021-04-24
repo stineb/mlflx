@@ -39,8 +39,6 @@ class ResidualBlock(nn.Module):
 
         return output, skip
 
-
-
 class DensNet(torch.nn.Module):
     def __init__(self, channels):
         """
