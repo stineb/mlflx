@@ -20,7 +20,6 @@ parser.add_argument('-e', '--n_epochs', default=None, type=int,
 
 args = parser.parse_args()
 DEVICE = torch.device("cuda:" + args.gpu)
-DEVICE = "cpu"
 # Load Configs
 with open('config.json', 'r') as config_file:
     config_data = json.load(config_file)
