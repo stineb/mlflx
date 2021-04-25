@@ -20,7 +20,7 @@ parser.add_argument('-e', '--n_epochs', default=None, type=int,
 
 args = parser.parse_args()
 DEVICE = torch.device("cuda:" + args.gpu)
-
+DEVICE = "cpu"
 # Load Configs
 with open('config.json', 'r') as config_file:
     config_data = json.load(config_file)
@@ -44,8 +44,6 @@ INPUT_FEATURES = len(df_sensor[0].columns) + CONDITIONAL_FEATURES
 
 
 
-
-
 cv_r2 = []
 
 for s in tqdm(range(len(df_sensor))):
@@ -65,8 +63,6 @@ for s in tqdm(range(len(df_sensor))):
   reparam = Reparametrize(ENCODER_OUTPUT_SIZE, LATENT_SIZE).to(DEVICE)
   decoder = DecoderNoTime(LATENT_SIZE, INPUT_FEATURES, CONDITIONAL_FEATURES, CONDITION_DECODER).to(DEVICE)
   regressor = Regressor(LATENT_SIZE)
-
-    
   model = Model(encoder, reparam, decoder, regressor).to(DEVICE)
   
   
@@ -79,7 +75,6 @@ for s in tqdm(range(len(df_sensor))):
       for (x, y, conditional) in zip(x_train, y_train, conditional_train):
         x = torch.FloatTensor(x).unsqueeze(1).to(DEVICE)
         y = torch.FloatTensor(y).to(DEVICE)
-
         conditional = torch.FloatTensor(conditional).to(DEVICE)
         outputs, mean, logvar, y_pred = model(x, conditional)
         x = x.squeeze(1)
@@ -89,6 +84,7 @@ for s in tqdm(range(len(df_sensor))):
         loss.backward()
         optimizer.step()
       
+      model.eval()
       with torch.no_grad():
           for (x, y, conditional) in zip(x_test, y_test, conditional_test):
             x = torch.FloatTensor(x).unsqueeze(1).to(DEVICE)
@@ -101,7 +97,6 @@ for s in tqdm(range(len(df_sensor))):
             
             loss, recon_loss, kl_loss, reg_loss = loss_fn(outputs, x, y_pred, y, mean, logvar, 1)
             r2.append(r2_score(y_true=y.detach().cpu().numpy(), y_pred=y_pred.detach().cpu().numpy()))
-
   cv_r2.append(max(r2))
   print(f"Test Site: {data.index.unique()[s]} R2: {cv_r2[s]}")
   print("CV R2 cumulative mean: ", np.mean(cv_r2), " +- ", np.std(cv_r2))

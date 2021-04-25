@@ -19,6 +19,6 @@ def prepare_df(data):
     df_sensor = [normalize(sensor_data[sensor_data.index == site]) for site in sites]
     df_meta = [meta_data[meta_data.index == site] for site in sites]
     df_gpp = [data[data.index == site]['GPP_NT_VUT_REF'] for site in sites]   
-
+    df_gpp = [(df_gpp[i]-df_gpp[i].mean())/df_gpp[i].std() for i in range(len(df_gpp))]
     return df_sensor, df_meta, df_gpp
 
