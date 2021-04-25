@@ -18,6 +18,9 @@ parser.add_argument('-gpu', '--gpu', default=None, type=str,
 parser.add_argument('-e', '--n_epochs', default=None, type=int,
                       help='number of cv epochs (wavenet)')
 
+parser.add_argument('-d', '--latent_dim', default=None, type=int,
+                      help='latent dim')
+
 args = parser.parse_args()
 DEVICE = torch.device("cuda:" + args.gpu)
 # Load Configs
@@ -35,7 +38,7 @@ df_sensor, df_meta, df_gpp = prepare_df(data)
 
 
 ENCODER_OUTPUT_SIZE = 256
-LATENT_SIZE = 16
+LATENT_SIZE = args.latent_dim
 CONDITIONAL_FEATURES = len(df_meta[0].columns)
 CONDITION_DECODER = True
 INPUT_FEATURES = len(df_sensor[0].columns) + CONDITIONAL_FEATURES
