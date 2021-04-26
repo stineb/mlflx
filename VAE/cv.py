@@ -54,11 +54,11 @@ for s in tqdm(range(len(df_sensor))):
   sites_to_train.remove(s)
   sites_to_test = [s]
 
-  x_train = [normalize(pd.concat([df_sensor[i],df_meta[i]],axis=1)).values for i in sites_to_train]
+  x_train = [pd.concat([df_sensor[i],df_meta[i]],axis=1).values for i in sites_to_train]
   conditional_train = [df_meta[i].values for i in sites_to_train]
-  y_train = [normalize(df_gpp[i]).values.reshape(-1,1) for i in sites_to_train]
+  y_train = [df_gpp[i].values.reshape(-1,1) for i in sites_to_train]
  
-  x_test = [normalize(pd.concat([df_sensor[i],df_meta[i]],axis=1).values) for i in sites_to_test]
+  x_test = [pd.concat([df_sensor[i],df_meta[i]],axis=1).values for i in sites_to_test]
   conditional_test = [df_meta[i].values for i in sites_to_test]
   y_test = [df_gpp[i].values.reshape(-1,1) for i in sites_to_test]
 
