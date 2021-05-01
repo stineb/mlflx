@@ -40,7 +40,7 @@ data = data[data.index != "AR-Vir"]
 data = data[data.index != "CN-Cng"]
 df_sensor, df_meta, df_gpp = prepare_df(data)
 
-for i in len(df_meta):
+for i in range(len(df_meta)):
   df_meta[i][df_meta[i] > 0] = 0
 
 
