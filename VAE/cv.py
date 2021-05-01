@@ -8,7 +8,7 @@ import torch
 import pandas as pd
 import argparse
 import numpy as np
-import pdb
+
 # Parse arguments 
 parser = argparse.ArgumentParser(description='CV VAE')
 
@@ -79,7 +79,6 @@ for s in tqdm(range(len(df_sensor))):
   optimizer = torch.optim.Adam(model.parameters())
   r2 = []
   for epoch in range(args.n_epochs):
-      pdb.set_trace()
       model.train()
       for (x, y, conditional) in zip(x_train, y_train, conditional_train):
         x = torch.FloatTensor(x).unsqueeze(1).to(DEVICE)
@@ -93,7 +92,6 @@ for s in tqdm(range(len(df_sensor))):
         loss.backward()
         optimizer.step()
       
-      pdb.set_trace()
       model.eval()
       with torch.no_grad():
           for (x, y, conditional) in zip(x_test, y_test, conditional_test):
