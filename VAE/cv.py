@@ -1,6 +1,7 @@
 from model.model import EncoderWithTime, Reparametrize, DecoderNoTime, Regressor, Model
 from sklearn.metrics import r2_score
 from utils.preprocess import prepare_df, normalize
+from utils.visualization import plot_site
 from model.loss import loss_fn
 from tqdm import tqdm
 import json
@@ -23,7 +24,6 @@ parser.add_argument('-d', '--latent_dim', default=None, type=int,
 
 args = parser.parse_args()
 DEVICE = torch.device("cuda:" + args.gpu)
-
 torch.manual_seed(40)
 np.random.seed(40)
 
@@ -39,10 +39,6 @@ data = pd.read_csv(config_data["data_dir"], index_col=0).drop(columns=['lat', 'l
 data = data[data.index != "AR-Vir"]
 data = data[data.index != "CN-Cng"]
 df_sensor, df_meta, df_gpp = prepare_df(data)
-
-for i in range(len(df_meta)):
-  df_meta[i][df_meta[i] > 0] = 0
-
 
 
 ENCODER_OUTPUT_SIZE = 256
@@ -77,7 +73,7 @@ for s in tqdm(range(len(df_sensor))):
   
   
   optimizer = torch.optim.Adam(model.parameters())
-  r2 = []
+  r2 = [0]
   for epoch in range(args.n_epochs):
       model.train()
       for (x, y, conditional) in zip(x_train, y_train, conditional_train):
@@ -104,8 +100,17 @@ for s in tqdm(range(len(df_sensor))):
             x = x.squeeze(1)
             
             loss, recon_loss, kl_loss, reg_loss = loss_fn(outputs, x, y_pred, y, mean, logvar, 1)
-            r2.append(r2_score(y_true=y.detach().cpu().numpy(), y_pred=y_pred.detach().cpu().numpy()))
+            test_r2 = r2_score(y_true=y.detach().cpu().numpy(), y_pred=y_pred.detach().cpu().numpy())
+            if test_r2 > max(r2):
+              torch.save(model.state_dict(), 'best-model.pt')
+            r2.append(test_r2)
   cv_r2.append(max(r2))
+  model.load_state_dict(torch.load('best-model.pt'))
+  x = torch.FloatTensor(x_test[0]).unsqueeze(1).to(DEVICE)
+  y = torch.FloatTensor(y_test[0]).to(DEVICE)
+  conditional = torch.FloatTensor(conditional_test[0]).to(DEVICE)
+  outputs, mean, logvar, y_pred  = model(x,conditional)
+  plot_site(data.index.unique()[s], y_test[0].reshape(-1), y_pred.detach().cpu().reshape(-1), cv_r2[s])
   print(f"Test Site: {data.index.unique()[s]} R2: {cv_r2[s]}")
   print("CV R2 cumulative mean: ", np.mean(cv_r2), " +- ", np.std(cv_r2))
   print("-------------------------------------------------------------------")
