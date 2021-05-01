@@ -24,6 +24,9 @@ parser.add_argument('-d', '--latent_dim', default=None, type=int,
 args = parser.parse_args()
 DEVICE = torch.device("cuda:" + args.gpu)
 
+torch.manual_seed(40)
+np.random.seed(40)
+
 
 # Load Configs
 with open('config.json', 'r') as config_file:
