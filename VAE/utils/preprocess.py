@@ -9,9 +9,9 @@ def normalize(df):
     return result
 
 
-def prepare_df(data):
+def prepare_df(data, meta_columns=['plant_functional_type','classid','koeppen_code','igbp_land_use']):
     # Site Data
-    meta_data = pd.get_dummies(data[['plant_functional_type','classid','koeppen_code','igbp_land_use']])
+    meta_data = pd.get_dummies(data[meta_columns])
     sensor_data = data.drop(columns=['plant_functional_type', 'classid', 'koeppen_code','igbp_land_use', 'GPP_NT_VUT_REF'])
     
     # Batch by site

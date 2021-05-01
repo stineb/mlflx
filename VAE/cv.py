@@ -8,22 +8,23 @@ import torch
 import pandas as pd
 import argparse
 import numpy as np
-
+import pdb
 # Parse arguments 
-parser = argparse.ArgumentParser(description='CV wavenet')
+parser = argparse.ArgumentParser(description='CV VAE')
 
 parser.add_argument('-gpu', '--gpu', default=None, type=str,
                       help='indices of GPU to enable ')
 
 parser.add_argument('-e', '--n_epochs', default=None, type=int,
-                      help='number of cv epochs (wavenet)')
+                      help='number of cv epochs ()')
 
 parser.add_argument('-d', '--latent_dim', default=None, type=int,
                       help='latent dim')
 
 args = parser.parse_args()
 DEVICE = torch.device("cuda:" + args.gpu)
-DEVICE = "cpu"
+
+
 # Load Configs
 with open('config.json', 'r') as config_file:
     config_data = json.load(config_file)
@@ -35,6 +36,9 @@ data = pd.read_csv(config_data["data_dir"], index_col=0).drop(columns=['lat', 'l
 data = data[data.index != "AR-Vir"]
 data = data[data.index != "CN-Cng"]
 df_sensor, df_meta, df_gpp = prepare_df(data)
+
+for i in len(df_meta):
+  df_meta[i][df_meta[i] > 0] = 0
 
 
 
@@ -71,9 +75,8 @@ for s in tqdm(range(len(df_sensor))):
   
   optimizer = torch.optim.Adam(model.parameters())
   r2 = []
-
   for epoch in range(args.n_epochs):
-
+      pdb.set_trace()
       model.train()
       for (x, y, conditional) in zip(x_train, y_train, conditional_train):
         x = torch.FloatTensor(x).unsqueeze(1).to(DEVICE)
@@ -87,6 +90,7 @@ for s in tqdm(range(len(df_sensor))):
         loss.backward()
         optimizer.step()
       
+      pdb.set_trace()
       model.eval()
       with torch.no_grad():
           for (x, y, conditional) in zip(x_test, y_test, conditional_test):
