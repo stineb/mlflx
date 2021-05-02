@@ -22,6 +22,7 @@ parser.add_argument('-e', '--n_epochs', default=None, type=int,
                       help='number of cv epochs (wavenet)')
 
 args = parser.parse_args()
+#-gpu 4 -di 4 -rb 2 -e2
 DEVICE = torch.device("cuda:" + args.gpu)
 # DEVICE = torch.device("cuda:2")
 # Load Configs
@@ -31,25 +32,21 @@ with open('config.json', 'r') as config_file:
 df = pd.read_csv(config_data["data_dir"],index_col=0)
 sites_df = batch_by_site(df)
 n_features  = len(sites_df[0].columns)-1
-cv_mse = []
+
 cv_r2 = []
 for s in tqdm(range(0,len(sites_df))):
-  sites_to_train = list(range(0, len(sites_df)))
+#   sites_to_train = list(range(0, len(sites_df)))
 #   sites_to_train = list(range(1, len(sites_df)))
-  sites_to_train.remove(s)
-  site_to_test = [s]
+#   sites_to_train.remove(s)
+#   site_to_test = [s]
 
-  train = [sites_df[i] for i in sites_to_train]
-  test = [sites_df[i] for i in site_to_test]
+  train = normalize(sites_df[s].loc[:len(sites_df[s])//2])
+  test= normalize(sites_df[s].loc[len(sites_df[s])//2:])
 
-  for i in range(len(train)):
-    train[i] = normalize(train[i])
-
-  for i in range(len(test)):
-    test[i] = normalize(test[i])
-
-  X_train, y_train = make_batches(train)
-  X_test, y_test = make_batches(test)
+  X_train=[train.drop(columns=["GPP_NT_VUT_REF"]).to_numpy()]
+  y_train=[train['GPP_NT_VUT_REF'].to_numpy()]
+  X_test=[test.drop(columns=["GPP_NT_VUT_REF"]).to_numpy()]
+  y_test=[test['GPP_NT_VUT_REF'].to_numpy()]
   model = WaveNet(args.n_dilations, args.n_residuals, n_features, 128, DEVICE).to(DEVICE)
   criterion = torch.nn.MSELoss()
   optimizer = torch.optim.Adam(model.parameters())
@@ -95,11 +92,8 @@ for s in tqdm(range(0,len(sites_df))):
               test_mse += torch.mean((y - pred) ** 2)
               r2.append(r2_score(pred,y))
                   
-      train_losses.append(train_loss / len(X_train))
-      test_losses.append(test_loss / len(X_test))
+      
   cv_r2.append(max(r2))
-  cv_mse.append(min(test_losses))
-  print(f"Test Site: {df.index.unique()[s]}  MSE: {cv_mse[s]} R2: {cv_r2[s]}")
-  print("CV MSE cumulative mean: ", np.mean(cv_mse)," +-", np.std(cv_mse))
+  print(f"Test Site: {df.index.unique()[s]}  R2: {cv_r2[s]}")
   print("CV R2 cumulative mean: ", np.mean(cv_r2), " +- ", np.std(cv_r2))
   print("-------------------------------------------------------------------")

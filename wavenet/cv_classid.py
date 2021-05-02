@@ -20,20 +20,19 @@ parser.add_argument('-rb', '--n_residuals', default=None, type=int,
                       help='number of residual blocks (wavenet)')
 parser.add_argument('-e', '--n_epochs', default=None, type=int,
                       help='number of cv epochs (wavenet)')
-
+#-gpu 2 -di 4 -rb 2 -e 20
 args = parser.parse_args()
-DEVICE = torch.device("cuda:" + args.gpu)
-
+DEVICE = torch.device("cuda:2")
 # Load Configs
 with open('config.json', 'r') as config_file:
     config_data = json.load(config_file)
 
 df = pd.read_csv(config_data["data_dir"],index_col=0).dropna()
-lands = df['igbp_land_use'].unique()
+lands = df['classid'].unique()
 for land in tqdm(lands):
     cv_mse = []
     cv_r2 = []
-    sites_df = batch_by_site(df[df.igbp_land_use == land])
+    sites_df = batch_by_site(df[df.classid == land])
     n_features  = len(sites_df[0].columns)-1
     if len(sites_df) < 2:
         continue
@@ -102,6 +101,6 @@ for land in tqdm(lands):
             test_losses.append(test_loss / len(X_test))
         cv_r2.append(max(r2))
         cv_mse.append(min(test_losses))
-    print(f"IGBP_LAND_USE: {land}  MSE: {np.mean(cv_mse):.2f} +- {np.std(cv_mse):.2f} R2: {np.mean(cv_r2):.2f} +- {np.std(cv_r2):.2f}")
+    print(f"classid: {land}  MSE: {np.mean(cv_mse):.2f} +- {np.std(cv_mse):.2f} R2: {np.mean(cv_r2):.2f} +- {np.std(cv_r2):.2f}")
     print("-------------------------------------------------------------------")
     

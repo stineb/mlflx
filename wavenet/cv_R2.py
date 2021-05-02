@@ -33,6 +33,7 @@ sites_df = batch_by_site(df)
 n_features  = len(sites_df[0].columns)-1
 cv_mse = []
 cv_r2 = []
+cv_r2_all=[]
 for s in tqdm(range(0,len(sites_df))):
   sites_to_train = list(range(0, len(sites_df)))
 #   sites_to_train = list(range(1, len(sites_df)))
@@ -57,13 +58,17 @@ for s in tqdm(range(0,len(sites_df))):
   train_losses = []
   test_losses = []
   r2 = []
+  r2_all=[]
   for epoch in range(args.n_epochs):
       train_loss = 0.0
       test_loss = 0.0
       train_mse = 0.0
       test_mse = 0.0
-
+      pred_all=[]
+      y_all=[]
+      r2_epochend=[]
       model.train()
+    
       for (x, y) in zip(X_train, y_train):
           x = torch.FloatTensor(x).unsqueeze(0).permute(0, 2, 1).to(DEVICE)
           y = torch.FloatTensor(y).to(DEVICE)
@@ -94,12 +99,20 @@ for s in tqdm(range(0,len(sites_df))):
               test_loss += loss.item()
               test_mse += torch.mean((y - pred) ** 2)
               r2.append(r2_score(pred,y))
-                  
+              pred_all.append(pred)
+              y_all.append(y)
+                
+      r2_all.append(r2_score(torch.cat(pred_all),torch.cat(y_all)))   
       train_losses.append(train_loss / len(X_train))
       test_losses.append(test_loss / len(X_test))
-  cv_r2.append(max(r2))
-  cv_mse.append(min(test_losses))
-  print(f"Test Site: {df.index.unique()[s]}  MSE: {cv_mse[s]} R2: {cv_r2[s]}")
-  print("CV MSE cumulative mean: ", np.mean(cv_mse)," +-", np.std(cv_mse))
-  print("CV R2 cumulative mean: ", np.mean(cv_r2), " +- ", np.std(cv_r2))
-  print("-------------------------------------------------------------------")
+ 
+  r2_epochend=r2_all[-1:]
+  cv_r2_all.append(r2_epochend)
+#   cv_r2.append(max(r2))
+#   cv_mse.append(min(test_losses))
+#   cv_r2_all.append(np.mean(epoch_r2_all))
+#   print(f"Test Site: {df.index.unique()[s]}  MSE: {cv_mse[s]} R2: {cv_r2[s]}")
+#   print("CV MSE cumulative mean: ", np.mean(cv_mse)," +-", np.std(cv_mse))
+#   print("CV R2 cumulative mean: ", np.mean(cv_r2), " +- ", np.std(cv_r2))
+#   print("-------------------------------------------------------------------")
+print("CV r2 all",cv_r2_all)
