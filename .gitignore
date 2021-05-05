@@ -15,3 +15,4 @@ wavenet/utils/__pycache__/preprocess.cpython-39.pyc
 wavenet/utils/__pycache__/preprocess.cpython-38.pyc
 .gitignore
 wavenet/model/__pycache__/model.cpython-38.pyc
+.Rproj.user
