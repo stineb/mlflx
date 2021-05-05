@@ -10,6 +10,7 @@ output: html_document
 library(tidyverse)
 library(ingestr)  # https://github.com/stineb/ingestr
 library(rbeni)    # https://github.com/stineb/rbeni
+library(recipes)
 ```
 
 
@@ -182,55 +183,69 @@ list_df_clean <- purrr::map(list_df_clean, ~clean_le(.))
 list_df_clean[[1]]
 ```
 
-### Gapfill data
+<!-- Save cleaned file to remember which data is measured (for model validation). -->
+<!-- ```{r} -->
+<!-- ddf_which_filled <- list_df_clean %>%  -->
+<!--   bind_rows(.id = "sitename") %>%  -->
+<!--   dplyr::select(sitename, TIMESTAMP, GPP_NT_VUT_REF, NEE_VUT_REF, LE_F_MDS) %>%  -->
+<!--   mutate(filled_GPP_NT_VUT_REF = is.na(GPP_NT_VUT_REF), -->
+<!--          filled_NEE_VUT_REF = is.na(NEE_VUT_REF), -->
+<!--          filled_LE_F_MDS = is.na(LE_F_MDS)) %>%  -->
+<!--   dplyr::select(sitename, TIMESTAMP, starts_with("filled_")) -->
+<!-- write_csv(ddf_which_filled, path = "data/ddf_which_filled_mlflx_20210413.csv") -->
+<!-- ``` -->
 
-Impute missing targets with KNN (k=5) and selected predictors. This is done for each site separately.
-```{r}
-library(recipes)
+DO NOT GAP-FILL DATA
 
-fill_missing_targets <- function(df){
-  
-  df <- df %>% 
-    mutate(LE_F_MDS_clean = LE_F_MDS, NEE_VUT_REF_clean = NEE_VUT_REF, GPP_NT_VUT_REF_clean = GPP_NT_VUT_REF)
-  
-  pp <- recipe(GPP_NT_VUT_REF ~ ., data = df) %>% 
-    
-    ## targets
-    step_knnimpute(LE_F_MDS, neighbors = 5, impute_with = imp_vars(SW_IN_F, LW_IN_F, TA_F, WS_F, VPD_F, P_F)) %>%
-    step_knnimpute(NEE_VUT_REF, neighbors = 5, impute_with = imp_vars(SW_IN_F, LW_IN_F, TA_F, WS_F, VPD_F, P_F, TA_F_DAY, TA_F_NIGHT)) %>%
-    step_knnimpute(GPP_NT_VUT_REF, neighbors = 5, impute_with = imp_vars(SW_IN_F, LW_IN_F, TA_F, WS_F, VPD_F, P_F, TA_F_DAY)) %>%
-    
-    ## this fills only 0.17%
-    step_knnimpute(TA_F_DAY, neighbors = 5, impute_with = imp_vars(SW_IN_F, LW_IN_F, TA_F)) %>%
-    step_knnimpute(TA_F_NIGHT, neighbors = 5, impute_with = imp_vars(SW_IN_F, LW_IN_F, TA_F_NIGHT)) %>%
-    
-    prep(training = df)
-  
-  df <- bake(pp, new_data = df)
-  
-  return(df)
-}
+<!-- ### Gapfill data -->
 
-list_df_clean <- purrr::map(list_df_clean, ~fill_missing_targets(.))
+<!-- Impute missing targets with KNN (k=5) and selected predictors. This is done for each site separately. -->
+<!-- ```{r} -->
+<!-- library(recipes) -->
 
-list_df_clean[[1]] %>% 
-  ggplot() +
-  geom_line(aes(TIMESTAMP, LE_F_MDS_raw), color = "red") +
-  geom_line(aes(TIMESTAMP, LE_F_MDS), color = "royalblue") +
-  geom_line(aes(TIMESTAMP, LE_F_MDS_clean))
+<!-- fill_missing_targets <- function(df){ -->
 
-list_df_clean[[1]] %>% 
-  ggplot() +
-  geom_line(aes(TIMESTAMP, NEE_VUT_REF_raw), color = "red") +
-  geom_line(aes(TIMESTAMP, NEE_VUT_REF), color = "royalblue") +
-  geom_line(aes(TIMESTAMP, NEE_VUT_REF_clean))
+<!--   df <- df %>%  -->
+<!--     mutate(LE_F_MDS_clean = LE_F_MDS, NEE_VUT_REF_clean = NEE_VUT_REF, GPP_NT_VUT_REF_clean = GPP_NT_VUT_REF) -->
 
-list_df_clean[[1]] %>% 
-  ggplot() +
-  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
-  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF), color = "royalblue") +
-  geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_clean))
-```
+<!--   pp <- recipe(GPP_NT_VUT_REF ~ ., data = df) %>%  -->
+
+<!--     ## targets -->
+<!--     step_knnimpute(LE_F_MDS, neighbors = 5, impute_with = imp_vars(SW_IN_F, LW_IN_F, TA_F, WS_F, VPD_F, P_F)) %>% -->
+<!--     step_knnimpute(NEE_VUT_REF, neighbors = 5, impute_with = imp_vars(SW_IN_F, LW_IN_F, TA_F, WS_F, VPD_F, P_F, TA_F_DAY, TA_F_NIGHT)) %>% -->
+<!--     step_knnimpute(GPP_NT_VUT_REF, neighbors = 5, impute_with = imp_vars(SW_IN_F, LW_IN_F, TA_F, WS_F, VPD_F, P_F, TA_F_DAY)) %>% -->
+
+<!--     ## this fills only 0.17% -->
+<!--     step_knnimpute(TA_F_DAY, neighbors = 5, impute_with = imp_vars(SW_IN_F, LW_IN_F, TA_F)) %>% -->
+<!--     step_knnimpute(TA_F_NIGHT, neighbors = 5, impute_with = imp_vars(SW_IN_F, LW_IN_F, TA_F_NIGHT)) %>% -->
+
+<!--     prep(training = df) -->
+
+<!--   df <- bake(pp, new_data = df) -->
+
+<!--   return(df) -->
+<!-- } -->
+
+<!-- list_df_clean <- purrr::map(list_df_clean, ~fill_missing_targets(.)) -->
+
+<!-- list_df_clean[[1]] %>%  -->
+<!--   ggplot() + -->
+<!--   geom_line(aes(TIMESTAMP, LE_F_MDS_raw), color = "red") + -->
+<!--   geom_line(aes(TIMESTAMP, LE_F_MDS), color = "royalblue") + -->
+<!--   geom_line(aes(TIMESTAMP, LE_F_MDS_clean)) -->
+
+<!-- list_df_clean[[1]] %>%  -->
+<!--   ggplot() + -->
+<!--   geom_line(aes(TIMESTAMP, NEE_VUT_REF_raw), color = "red") + -->
+<!--   geom_line(aes(TIMESTAMP, NEE_VUT_REF), color = "royalblue") + -->
+<!--   geom_line(aes(TIMESTAMP, NEE_VUT_REF_clean)) -->
+
+<!-- list_df_clean[[1]] %>%  -->
+<!--   ggplot() + -->
+<!--   geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") + -->
+<!--   geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF), color = "royalblue") + -->
+<!--   geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_clean)) -->
+<!-- ``` -->
 
 
 Make it a single flat dataframe. Has now shape 265,175 x 19.
@@ -251,8 +266,8 @@ ddf %>%
 
 Write to file.
 ```{r}
-write_csv(ddf, path = "data/ddf_fluxnet_mlflx_20210413.csv")
-save(ddf, file = "data/ddf_fluxnet_mlflx_20210413.RData")
+write_csv(ddf, path = "data/ddf_fluxnet_mlflx_20210505.csv")
+save(ddf, file = "data/ddf_fluxnet_mlflx_20210505.RData")
 ```
 
 
@@ -268,6 +283,7 @@ ddf %>%
   geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
   geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
 ```
+
 In this case, it's probably because the data before 2010 is just not available. Best to just drop all missing rows (affects only the head of the data frame).
 
 ```{r}
@@ -277,6 +293,7 @@ ddf %>%
   geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
   geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
 ```
+
 In this case, a sequence at the start and another sequence in the middle are missing. The missing rows at the start (head) may just be dropped. The ones in the middle may better be imputed to not lose also the four years data (1999 - 2002). What's the most suitable imputation method? Maybe k-nearest neighbours? I let this decision up to you.
 
 ```{r}
@@ -312,7 +329,9 @@ ddf %>%
   geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
   geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
 ```
+
 This is so weird that we have to make an educated guess and crudely throw away some data. E.g. drop all rows before mid-2007. 
+
 ```{r}
 ddf %>% 
   dplyr::filter(sitename %in% sites[5] & TIMESTAMP > lubridate::ymd("2007-07-01")) %>% 
@@ -328,7 +347,9 @@ ddf %>%
   geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
   geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
 ```
+
 This is weird, too. Let's just use years 2001 - 2006.
+
 ```{r}
 ddf %>% 
   dplyr::filter(sitename %in% sites[7] & TIMESTAMP > lubridate::ymd("2001-01-01") & TIMESTAMP < lubridate::ymd("2007-01-01")) %>% 
@@ -344,6 +365,7 @@ ddf %>%
   geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
   geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
 ```
+
 Looks good. Just remove missing head.
 
 ```{r}
@@ -353,6 +375,7 @@ ddf %>%
   geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF_raw), color = "red") +
   geom_line(aes(TIMESTAMP, GPP_NT_VUT_REF))
 ```
+
 Same here.
 
 ```{r}
@@ -562,6 +585,7 @@ ddf <- ddf %>%
 
 Now fill missing SWC data
 ```{r}
+source("R/fill_missing_swc.R")
 ddf <- ddf %>% 
   group_by(sitename) %>% 
   group_split() %>% 
@@ -583,8 +607,8 @@ Write to file now including column wscal (water scalar, 0 = dry, 1 = 100% water 
 ```{r}
 ddf <- ddf %>% 
   dplyr::select(-starts_with("SWC_"))
-write_csv(ddf, path = "data/ddf_fluxnet_mlflx_wscal_20210413.csv")
-save(ddf, file = "data/ddf_fluxnet_mlflx_wscal_20210413.RData")
+write_csv(ddf, path = "data/ddf_fluxnet_mlflx_wscal_20210505.csv")
+save(ddf, file = "data/ddf_fluxnet_mlflx_wscal_20210505.RData")
 ```
 
 Plot a few.
@@ -652,7 +676,43 @@ ddf %>%
 
 ### MOD09A1
 
-Get MOD09A1 reflectance data from [ORNL DAAC](https://lpdaac.usgs.gov/products/mod09a1v006/), using the [MODISTools R package](https://github.com/ropensci/MODISTools).
+Get MOD09A1 reflectance data from [ORNL DAAC](https://lpdaac.usgs.gov/products/mod09a1v006/).
+
+Using ingestr:
+
+```{r}
+# load("data/ddf_fluxnet_mlflx_wscal_20210413.RData")
+df_sites <- read_csv("./data/df_sites_mlflx.csv")
+
+## create df_sites based on ddf to make sure we get the right dates matching the fluxnet data we now have nicely processed
+df_sites_ddf <- ddf %>% 
+  mutate(year = lubridate::year(TIMESTAMP)) %>% 
+  group_by(sitename) %>% 
+  summarise(year_start = min(year), year_end = max(year)) %>% 
+  left_join(df_sites %>% dplyr::select(sitename, lon, lat),
+            by = "sitename")
+
+settings_modis <- get_settings_modis(
+  bundle            = "modis_refl_terra",
+  data_path         = "~/data/modis_subsets/",
+  method_interpol   = "loess",
+  keep              = TRUE,
+  overwrite_raw     = FALSE,
+  overwrite_interpol= TRUE,
+  n_focal           = 0
+  )
+
+df_modis_fpar <- ingest(
+  df_sites_ddf,
+  source = "modis",
+  settings = settings_modis, 
+  parallel = FALSE,
+  # ncores = 2
+  )
+```
+
+
+Using the [MODISTools R package](https://github.com/ropensci/MODISTools):
 
 ```{r}
 library(MODISTools)
@@ -800,8 +860,8 @@ df_modis_fpar %>%
 
 Write to file.
 ```{r}
-write_csv(df_modis_fpar, path = "data/ddf_fpar_modis_mlflx_20210414.csv")
-save(df_modis_fpar, file = "data/ddf_fpar_modis_mlflx_20210414.RData")
+write_csv(df_modis_fpar, path = "data/ddf_fpar_modis_mlflx_20210505.csv")
+save(df_modis_fpar, file = "data/ddf_fpar_modis_mlflx_20210505.RData")
 ```
 
 ## Combine and write
@@ -838,19 +898,22 @@ ddf_mlflx <- ddf_mlflx %>%
 
 ## at this stage, only 31.12. dates missing - drop them
 ddf_mlflx %>% 
+  drop_na(fpar) %>% 
   dplyr::filter(is.na(fpar)) 
 
 ddf_mlflx <- ddf_mlflx %>% 
-  drop_na() %>% 
+
+  ## drop missing fpar (only 31.12. dates)
+  drop_na(fpar) %>% 
 
   ## add meta info (time invariant)
   left_join(df_sites %>% dplyr::select(-year_start, -year_end, -cluster), by = "sitename")
 
-write_csv(ddf_mlflx, path = "data/ddf_combined_mlflx_20210413.csv")
+write_csv(ddf_mlflx, path = "data/ddf_combined_mlflx_20210505.csv")
 ```
 
 Visualise missing data.
 ```{r}
-visdat::vis_miss(ddf_mlflx, warn_large_data = FALSE)
+visdat::vis_miss(ddf_mlflx %>% dplyr::select(1:16), warn_large_data = FALSE)
 ```
 
