@@ -6,3 +6,12 @@ data/data_imp1.csv
 .gitignore
 .gitignore
 .gitignore
+wavenet/model/__pycache__/model.cpython-39.pyc
+.gitignore
+.gitignore
+wavenet/model/__pycache__/model.cpython-39.pyc
+wavenet/model/__pycache__/metric.cpython-38.pyc
+wavenet/utils/__pycache__/preprocess.cpython-39.pyc
+wavenet/utils/__pycache__/preprocess.cpython-38.pyc
+.gitignore
+wavenet/model/__pycache__/model.cpython-38.pyc
