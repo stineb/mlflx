@@ -262,12 +262,36 @@ ddf %>%
   visdat::vis_miss(warn_large_data = FALSE)
 ```
 
+How many missing per site?
+```{r}
+# ddf <- read_csv("data/ddf_fluxnet_mlflx_20210505.csv")
+
+calc_frac_missing <- function(df){
+  (df %>% dplyr::filter(is.na(GPP_NT_VUT_REF)) %>% nrow(.))/nrow(df)
+}
+df_missing <- ddf %>% 
+  group_by(sitename) %>% 
+  nest() %>% 
+  mutate(frac_missing = purrr::map_dbl(data, ~calc_frac_missing(.))) %>% 
+  dplyr::select(-data) %>% 
+  arrange(desc(frac_missing))
+
+df_missing
+
+sites_missing_gpp <- df_missing %>% 
+  dplyr::filter(frac_missing > 0.33333) %>% 
+  pull(sitename)
+ddf <- ddf %>% 
+  dplyr::filter(!(sitename %in% sites_missing_gpp))
+```
+
+
 ### Write
 
 Write to file.
 ```{r}
-write_csv(ddf, path = "data/ddf_fluxnet_mlflx_20210505.csv")
-save(ddf, file = "data/ddf_fluxnet_mlflx_20210505.RData")
+write_csv(ddf, path = "data/ddf_fluxnet_mlflx_20210507.csv")
+save(ddf, file = "data/ddf_fluxnet_mlflx_20210507.RData")
 ```
 
 
@@ -703,8 +727,8 @@ settings_modis <- get_settings_modis(
   )
 
 df_modis_fpar <- ingest(
-  df_sites_ddf %>% 
-    mutate(year_start = 2000, year_end = 2020),
+  df_sites_ddf,
+    # mutate(year_start = 2001, year_end = 2019),
   source = "modis",
   settings = settings_modis, 
   parallel = FALSE,
