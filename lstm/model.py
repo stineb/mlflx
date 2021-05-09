@@ -3,18 +3,18 @@ import torch
 
 
 class Model(nn.Module):
-    def __init__(self, input_dim, hidden_dim, conditional):
+    def __init__(self, input_dim, conditional_dim, hidden_dim, conditional):
         super().__init__()
         self.lstm = nn.LSTM(input_size=input_dim, hidden_size=hidden_dim)
-
-        if conditional:
+        self.conditional = conditional
+        if self.conditional:
             self.fc1 = nn.Sequential(
-            nn.Linear(in_features=input_features+conditional_features, out_features=64),
+            nn.Linear(in_features=input_dim+conditional_dim, out_features=64),
             nn.ReLU()
         )
         else:
             self.fc1 = nn.Sequential(
-            nn.Linear(in_features=input_features, out_features=64),
+            nn.Linear(in_features=input_dim, out_features=64),
             nn.ReLU()
         )
 
@@ -28,13 +28,13 @@ class Model(nn.Module):
         )
         
         self.fc4 = nn.Linear(16, 1)
-   
-   def forward(self, x, conditional):
-        out, (h,c) = self.lstm(x.unsqueeze(1))
+        
+    def forward(self, x, c):
+        out, (h,d) = self.lstm(x.unsqueeze(1))
         out = out.squeeze(1)
 
-        if conditional:
-            out = torch.cat([out,conditional], dim=1)
+        if self.conditional:
+            out = torch.cat([out,c], dim=1)
         
         y = self.fc1(out)
         y = self.fc2(y)
