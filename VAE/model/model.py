@@ -109,12 +109,10 @@ class DecoderNoTime(nn.Module):
         return x
 
 class Regressor(nn.Module):
-    def __init__(self, input_features):
-        super().__init__()
-        self.input_features = input_features
-        
+    def __init__(self, input_features, conditional_features):
+        super().__init__()        
         self.fc1 = nn.Sequential(
-            nn.Linear(in_features=input_features, out_features=32),
+            nn.Linear(in_features=input_features+conditional_features, out_features=32),
             nn.ReLU()
         )
 
@@ -140,7 +138,8 @@ class Regressor(nn.Module):
         
         self.fc6 = nn.Linear(16, 1)
     
-    def forward(self, x):
+    def forward(self, x, cond):
+        x = torch.cat([x, cond], dim=1)
         x = self.fc1(x)
         x = self.fc2(x)
         x = self.fc3(x)
@@ -175,5 +174,5 @@ class Model(nn.Module):
         x = self.encoder(x)
         z, mean, logvar = self.reparametrize(x)
         x = self.decoder(z, conditional)
-        y = self.regressor(z)
+        y = self.regressor(z, conditional)
         return x, mean, logvar, y
