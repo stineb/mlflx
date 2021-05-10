@@ -139,7 +139,9 @@ clean_fluxnet_dd <- function(df){
 list_df_clean <- purrr::map(list_df, ~clean_fluxnet_dd(.))
 list_df_clean[[1]]
 ```
+
 Additional cleaning step: remove values that appear more than once.
+
 ```{r}
 identify_pattern <- function( vec ){
   
@@ -262,7 +264,8 @@ ddf %>%
   visdat::vis_miss(warn_large_data = FALSE)
 ```
 
-How many missing per site?
+How many missing per site? Remove sites if more than a third of their data is missing.
+
 ```{r}
 # ddf <- read_csv("data/ddf_fluxnet_mlflx_20210505.csv")
 
@@ -281,6 +284,7 @@ df_missing
 sites_missing_gpp <- df_missing %>% 
   dplyr::filter(frac_missing > 0.33333) %>% 
   pull(sitename)
+
 ddf <- ddf %>% 
   dplyr::filter(!(sitename %in% sites_missing_gpp))
 ```
@@ -288,10 +292,10 @@ ddf <- ddf %>%
 
 ### Write
 
-Write to file.
+Write to file. Now has 211,483 data points.
 ```{r}
-write_csv(ddf, path = "data/ddf_fluxnet_mlflx_20210507.csv")
-save(ddf, file = "data/ddf_fluxnet_mlflx_20210507.RData")
+write_csv(ddf, path = "data/ddf_fluxnet_mlflx_20210510.csv")
+save(ddf, file = "data/ddf_fluxnet_mlflx_20210510.RData")
 ```
 
 
@@ -727,8 +731,7 @@ settings_modis <- get_settings_modis(
   )
 
 df_modis_fpar <- ingest(
-  df_sites_ddf,
-    # mutate(year_start = 2001, year_end = 2019),
+  df_sites_ddf %>% mutate(year_start = 2000, year_end = 2020),
   source = "modis",
   settings = settings_modis, 
   parallel = FALSE,
