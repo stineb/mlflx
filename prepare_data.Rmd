@@ -139,7 +139,9 @@ clean_fluxnet_dd <- function(df){
 list_df_clean <- purrr::map(list_df, ~clean_fluxnet_dd(.))
 list_df_clean[[1]]
 ```
+
 Additional cleaning step: remove values that appear more than once.
+
 ```{r}
 identify_pattern <- function( vec ){
   
@@ -262,7 +264,8 @@ ddf %>%
   visdat::vis_miss(warn_large_data = FALSE)
 ```
 
-How many missing per site?
+How many missing per site? Remove sites if more than a third of their data is missing.
+
 ```{r}
 # ddf <- read_csv("data/ddf_fluxnet_mlflx_20210505.csv")
 
@@ -281,6 +284,7 @@ df_missing
 sites_missing_gpp <- df_missing %>% 
   dplyr::filter(frac_missing > 0.33333) %>% 
   pull(sitename)
+
 ddf <- ddf %>% 
   dplyr::filter(!(sitename %in% sites_missing_gpp))
 ```
@@ -288,10 +292,10 @@ ddf <- ddf %>%
 
 ### Write
 
-Write to file.
+Write to file. Now has 211,483 data points.
 ```{r}
-write_csv(ddf, path = "data/ddf_fluxnet_mlflx_20210507.csv")
-save(ddf, file = "data/ddf_fluxnet_mlflx_20210507.RData")
+write_csv(ddf, path = "data/ddf_fluxnet_mlflx_20210510.csv")
+save(ddf, file = "data/ddf_fluxnet_mlflx_20210510.RData")
 ```
 
 
@@ -564,26 +568,52 @@ This one is very challenging. Consider just the last two years or drop data from
 
 ```{r}
 # load("data/ddf_fluxnet_mlflx_20210413.RData")
-df_sites <- read_csv("./data/df_sites_mlflx.csv")
+# df_sites <- read_csv("./data/df_sites_mlflx.csv")
+
+ddf <- read_csv("data/ddf_fluxnet_mlflx_20210510.csv")
+
+df_sites <- ddf %>% 
+  mutate(year = lubridate::year(TIMESTAMP)) %>% 
+  group_by(sitename) %>% 
+  summarise(year_start = min(year), year_end = max(year)) %>% 
+  left_join(df_sites %>% dplyr::select(sitename, lon, lat),
+            by = "sitename")
 
 load("~/data/rsofun_benchmarking/df_output_allsites_v3.3.Rdata")    # loads df_output_allsites
 df_soilm <- df_output_allsites %>% 
   unnest(data) %>% 
   dplyr::select(sitename, TIMESTAMP = date, wscal)
 
-## some sites are not available from the modelled dataset:
-missing_sites_soilm <- df_sites$sitename[!(df_sites$sitename %in% unique(df_soilm$sitename))]
-missing_sites_soilm
-
 ## combine
 ddf <- ddf %>% 
-  left_join(df_soilm, by = c("sitename", "TIMESTAMP"))
-
-## show missing
-ddf %>% 
-  dplyr::select(starts_with("SWC_"), wscal) %>%
-  visdat::vis_miss(warn_large_data = F)
+  left_join(
+    df_soilm %>% dplyr::filter(!(sitename %in% missing_sites_soilm)), 
+    by = c("sitename", "TIMESTAMP")
+    )
 ```
+
+Exclude sites for which wscal data is completely missing. Down to 208,195 data points, 54 sites.
+```{r}
+calc_frac_missing_wscal <- function(df){
+  (df %>% dplyr::filter(is.na(wscal)) %>% nrow(.))/nrow(df)
+}
+sites_missing_wscal <- ddf %>% 
+  group_by(sitename) %>% 
+  nest() %>% 
+  mutate(frac_missing = purrr::map_dbl(data, ~calc_frac_missing_wscal(.))) %>% 
+  dplyr::select(-data) %>% 
+  dplyr::filter(frac_missing == 1.0) %>% 
+  pull(sitename)
+ddf <- ddf %>% 
+  dplyr::filter(!(sitename %in% sites_missing_wscal))
+
+## update site list data frame
+df_sites <- ddf %>% 
+  mutate(year = lubridate::year(TIMESTAMP)) %>% 
+  group_by(sitename) %>% 
+  summarise(year_start = min(year), year_end = max(year))
+```
+
 
 At what sites is wscal missing? Pretty much at all sites at least a few individual dates. Interpolate few missing dates at these sites.
 ```{r}
@@ -607,32 +637,35 @@ ddf <- ddf %>%
   bind_rows(.id = "sitename")
 ```
 
-Now fill missing SWC data
-```{r}
-source("R/fill_missing_swc.R")
-ddf <- ddf %>% 
-  group_by(sitename) %>% 
-  group_split() %>% 
-  purrr::map(~fill_missing_swc(.))
-names(ddf) <- df_sites$sitename
-ddf <- ddf %>% 
-  bind_rows(.id = "sitename")
+<!-- Now fill missing SWC data -->
+<!-- ```{r} -->
+<!-- source("R/fill_missing_swc.R") -->
+<!-- ddf <- ddf %>%  -->
+<!--   group_by(sitename) %>%  -->
+<!--   group_split() %>%  -->
+<!--   purrr::map(~fill_missing_swc(.)) -->
+<!-- names(ddf) <- df_sites$sitename -->
+<!-- ddf <- ddf %>%  -->
+<!--   bind_rows(.id = "sitename") -->
 
+<!-- ddf <- ddf %>%  -->
+<!--   dplyr::select(-SWC_F_MDS_5, -SWC_F_MDS_6, -SWC_F_MDS_7) -->
+<!-- ``` -->
+
+```{r}
 ddf <- ddf %>% 
-  dplyr::select(-SWC_F_MDS_5, -SWC_F_MDS_6, -SWC_F_MDS_7)
+  dplyr::select(-starts_with("SWC_"))
 
 ## show missing
 ddf %>% 
-  dplyr::select(starts_with("SWC_"), wscal) %>% 
+  # dplyr::select(starts_with("SWC_"), wscal) %>% 
   visdat::vis_miss(warn_large_data = F)
 ```
 
 Write to file now including column wscal (water scalar, 0 = dry, 1 = 100% water holding capacity of the soil).
 ```{r}
-ddf <- ddf %>% 
-  dplyr::select(-starts_with("SWC_"))
-write_csv(ddf, path = "data/ddf_fluxnet_mlflx_wscal_20210505.csv")
-save(ddf, file = "data/ddf_fluxnet_mlflx_wscal_20210505.RData")
+write_csv(ddf, path = "data/ddf_fluxnet_mlflx_wscal_20210510.csv")
+save(ddf, file = "data/ddf_fluxnet_mlflx_wscal_20210510.RData")
 ```
 
 Plot a few.
@@ -727,8 +760,7 @@ settings_modis <- get_settings_modis(
   )
 
 df_modis_fpar <- ingest(
-  df_sites_ddf,
-    # mutate(year_start = 2001, year_end = 2019),
+  df_sites_ddf %>% mutate(year_start = 2000, year_end = 2020),
   source = "modis",
   settings = settings_modis, 
   parallel = FALSE,
@@ -780,7 +812,7 @@ This uses the ingestr package to download and interpolate MODIS time series.
 This is also implemented in the download script `rscript_ingest_modis.R`.
 
 ```{r}
-# df_sites <- read_csv("./data/df_sites_mlflx.csv")
+df_sites <- read_csv("./data/df_sites_mlflx.csv")
 
 ## create df_sites based on ddf to make sure we get the right dates matching the fluxnet data we now have nicely processed
 df_sites_ddf <- ddf %>% 
@@ -797,7 +829,8 @@ settings_modis <- get_settings_modis(
   keep              = TRUE,
   overwrite_raw     = FALSE,
   overwrite_interpol= TRUE,
-  n_focal           = 0
+  n_focal           = 0,
+  filename_with_year= FALSE
   )
 
 df_modis_fpar <- ingest(
@@ -885,8 +918,8 @@ df_modis_fpar %>%
 
 Write to file.
 ```{r}
-write_csv(df_modis_fpar, path = "data/ddf_fpar_modis_mlflx_20210505.csv")
-save(df_modis_fpar, file = "data/ddf_fpar_modis_mlflx_20210505.RData")
+write_csv(df_modis_fpar, path = "data/ddf_fpar_modis_mlflx_20210510.csv")
+save(df_modis_fpar, file = "data/ddf_fpar_modis_mlflx_20210510.RData")
 ```
 
 ## Combine and write
@@ -906,35 +939,19 @@ ddf_mlflx <- ddf %>%
 ddf_mlflx %>% 
   visdat::vis_miss(warn_large_data = F)
 
-calc_frac_missing <- function(df){
-  (df %>% dplyr::filter(is.na(fpar)) %>% nrow(.))/nrow(df)
-}
-sites_missing_fapar2 <- ddf_mlflx %>% 
-  group_by(sitename) %>% 
-  nest() %>% 
-  mutate(frac_missing = purrr::map_dbl(data, ~calc_frac_missing(.))) %>% 
-  arrange(desc(frac_missing)) %>% 
-  dplyr::filter(frac_missing > 0.1) %>% 
-  pull(sitename) %>% 
-  unique()
-
-ddf_mlflx <- ddf_mlflx %>% 
-  dplyr::filter(!(sitename %in% sites_missing_fapar2))
+ddf_mlflx %>% 
+  dplyr::filter(is.na(fpar))
 
 ## at this stage, only 31.12. dates missing - drop them
-ddf_mlflx %>% 
-  drop_na(fpar) %>% 
-  dplyr::filter(is.na(fpar)) 
+ddf_mlflx <- ddf_mlflx %>% 
+  dplyr::filter(!is.na(fpar))
 
 ddf_mlflx <- ddf_mlflx %>% 
-
-  ## drop missing fpar (only 31.12. dates)
-  drop_na(fpar) %>% 
 
   ## add meta info (time invariant)
   left_join(df_sites %>% dplyr::select(-year_start, -year_end, -cluster), by = "sitename")
 
-write_csv(ddf_mlflx, path = "data/ddf_combined_mlflx_20210505.csv")
+write_csv(ddf_mlflx, path = "data/ddf_combined_mlflx_20210510.csv")
 ```
 
 Visualise missing data.
