@@ -756,15 +756,15 @@ settings_modis <- get_settings_modis(
   keep              = TRUE,
   overwrite_raw     = FALSE,
   overwrite_interpol= TRUE,
-  n_focal           = 0
+  n_focal           = 0,
+  network           = "FLUXNET"
   )
 
 df_modis_fpar <- ingest(
   df_sites_ddf %>% mutate(year_start = 2000, year_end = 2020),
   source = "modis",
   settings = settings_modis, 
-  parallel = FALSE,
-  # ncores = 2
+  parallel = FALSE
   )
 ```
 
