@@ -731,9 +731,9 @@ ddf %>%
 
 ## MODIS data
 
-### MOD09A1
+### MCD43A4
 
-Get MOD09A1 reflectance data from [ORNL DAAC](https://lpdaac.usgs.gov/products/mod09a1v006/).
+Get MCD43A4 nadir reflectance data from [ORNL DAAC](https://lpdaac.usgs.gov/products/mod09a1v006/).
 
 Using ingestr:
 
@@ -750,7 +750,7 @@ df_sites_ddf <- ddf %>%
             by = "sitename")
 
 settings_modis <- get_settings_modis(
-  bundle            = "modis_refl_terra",
+  bundle            = "modis_refl",
   data_path         = "~/data/modis_subsets/",
   method_interpol   = "loess",
   keep              = TRUE,
@@ -760,7 +760,9 @@ settings_modis <- get_settings_modis(
   )
 
 df_modis_fpar <- ingest(
-  df_sites_ddf %>% mutate(year_start = 2000, year_end = 2020),
+  df_sites_ddf %>% 
+    slice(1:2) %>% 
+    mutate(year_start = 2000, year_end = 2020),
   source = "modis",
   settings = settings_modis, 
   parallel = FALSE,
