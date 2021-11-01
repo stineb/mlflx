@@ -260,6 +260,7 @@ ddf <- list_df_clean %>%
 ### Visualise missing data
 
 ```{r}
+load("data/ddf_fluxnet_mlflx_20210510.RData")
 ddf %>% 
   visdat::vis_miss(warn_large_data = FALSE)
 ```

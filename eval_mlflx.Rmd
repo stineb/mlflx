@@ -9,125 +9,204 @@ output: html_document
 library(tidyverse)
 library(patchwork)
 library(ggrepel)
+library(rbeni)  # get it by devtools::install_github("https://github.com/stineb/rbeni.git")
 ```
 
-## Comparison to physical model
+## LSOCV metrics
 
-
-Load out-of-bag (OOB) cross validation results from Stocker et al. (2020) (file `df_metrics_oob_stocker20gmd_fig2.csv`), and from the LSTM.
-```{r cars}
-df_oob_pmodel <- read_csv("~/mlflx/data/df_metrics_oob_stocker20gmd_fig2.csv")
-df_oob_mlflx <- read_csv("~/mlflx/data/lstm_100e_r2.csv") %>% 
-  rename(rsq = R2, site = Site)
-```
-
-Plot histograms of R-squared of OOB-CV for the two.
-```{r pressure, echo=FALSE}
-gg1 <- df_oob_pmodel %>% 
-  ggplot() +
-  geom_histogram(aes(x = rsq, y = ..count..),
-    color = "black", alpha = 0.3, binwidth = 0.05, 
-    position="identity") +
-  theme_classic() +
-  labs(x = bquote(italic(R)^2), y = "Count") +
-  xlim(0.2, 1)
-
-gg2 <- df_oob_mlflx %>% 
-  ggplot() +
-  geom_histogram(aes(x = rsq, y = ..count..),
-    color = "black", alpha = 0.3, binwidth = 0.05, 
-    position="identity") +
-  theme_classic() +
-  labs(x = bquote(italic(R)^2), y = "Count") +
-  xlim(0.2, 1)
-
-gg1 / gg2
-```
-
-This is the plot I sent through Slack.
-```{r pressure, echo=FALSE}
-df <- df_oob_pmodel %>% 
-  rename(rsq_pmodel = rsq) %>% 
-  full_join(df_oob_mlflx %>% rename(rsq_ml = rsq), by = "site")
-
-df %>% 
-  ggplot(aes(x = rsq_pmodel, y = rsq_ml, label = site)) +
-  geom_point(size = 2, color = "red") +
-  theme_classic() +
-  geom_abline(slope = 1, intercept = 0, linetype = "dotted") +
-  xlim(0, 1) + ylim(0, 1) +
-  geom_text_repel(min.segment.length = 0, seed = 42, box.padding = 0.5) +
-  labs(x = bquote("Physical model" ~ italic(R)^2), y = bquote("ML" ~ italic(R)^2))
-
-ggsave("~/mlflx/fig/rsq_oob_comparison.pdf", width = 5, height = 4)
-```
-
-
-This is something else I did for myself (beni).
+Obtain outputs with this [link on Notion](https://www.notion.so/computationales/Results-2a637978b16346f98ac8c8c018ee7549#68803d0d60ca4b35b331be78c695a97c).
 ```{r}
-# df_mlflx <- read_csv("~/mlflx/data/ddf_combined_mlflx_20210510.csv")
-# 
-# df_mlflx %>% 
-#   dplyr::filter(classid == "DBF") %>% 
-#   pull(sitename) %>% 
-#   unique()
-# 
-# df_mlflx %>% 
-#   dplyr::filter(sitename == "US-Var") %>% 
-#   slice(2000:3600) %>% 
-#   ggplot(aes(x = date)) +
-#   geom_line(aes(y = GPP_NT_VUT_REF))
-# 
-# df_mlflx %>% 
-#   dplyr::filter(sitename == "US-Var") %>% 
-#   slice(2000:3600) %>% 
-#   ggplot(aes(x = date)) +
-#   geom_line(aes(y = fpar))
-
-df_metrics <- df_mlflx %>% 
-  dplyr::filter(sitename == "FR-Pue") %>% 
-  yardstick::metrics("fpar", "GPP_NT_VUT_REF") %>% 
-  mutate(sitename = "FR-Pue") %>% 
-  bind_rows(
-    df_mlflx %>% 
-      dplyr::filter(sitename == "CH-Lae") %>% 
-      yardstick::metrics("fpar", "GPP_NT_VUT_REF") %>% 
-      mutate(sitename = "CH-Lae")
-  ) %>% 
-  dplyr::filter(.metric == "rsq") %>% 
-  mutate(.estimate = format(.estimate, digits = 2))
-
-gg1 <- df_mlflx %>% 
-  dplyr::filter(sitename == "CH-Lae") %>% 
-  ggplot(aes(y = GPP_NT_VUT_REF, x = fpar)) +
-  geom_hex(bins = 30) +
-  scale_fill_gradientn(
-    colours = colorRampPalette( c("gray65", "navy", "red", "yellow"))(5)
-    # , trans = "log", breaks = c(1, 10)
-    ) +
-  theme_classic() +
-  labs(
-    title = "Deciduous forest: CH-Lae", 
-    subtitle = bquote( italic(R)^2 == .(df_metrics %>% dplyr::filter( sitename == "CH-Lae") %>% pull(.estimate))),
-    y = expression(paste("GPP (gC m"^-2, "s"^-1, ")")), x = "MODIS EVI") +
-  theme_classic() + 
-  geom_smooth(method='lm', color="red", size=0.5, se=FALSE)
-
-gg2 <- df_mlflx %>% 
-  dplyr::filter(sitename == "FR-Pue") %>% 
-  ggplot(aes(y = GPP_NT_VUT_REF, x = fpar)) +
-  geom_hex(bins = 30) +
-  scale_fill_gradientn(
-    colours = colorRampPalette( c("gray65", "navy", "red", "yellow"))(5)
-    # , trans = "log", breaks = c(1, 10)
-    ) +
-  theme_classic() +
-  labs(
-    title = "Evergreen forest: FR-Pue", 
-    subtitle = bquote( italic(R)^2 == .(df_metrics %>% dplyr::filter( sitename == "FR-Pue") %>% pull(.estimate))),
-    y = expression(paste("GPP (gC m"^-2, "s"^-1, ")")), x = "MODIS EVI") +
-  theme_classic() 
-
-gg1 + gg2
-ggsave("~/polybox/fig/gpp_evi.pdf", width = 8, height = 4)
+df <- read_csv("data/df_pred.csv")  # obtained from Notion -> mlflx DSLab -> Results -> 
 ```
+
+```{r}
+visdat::vis_miss(df, warn_large_data = FALSE, cluster = FALSE)
+```
+
+### Seasonal
+
+```{r}
+df_season <- df %>% 
+  mutate(doy = lubridate::yday(date)) %>% 
+  group_by(sitename, doy) %>% 
+  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), lstm = mean(LSTM, na.rm = TRUE), dnn = mean(DNN, na.rm = TRUE))
+```
+
+Practically o missing data
+```{r}
+visdat::vis_miss(df_season)
+```
+
+Agreement of mean seasonal cycles.
+```{r}
+df_season %>% rbeni::analyse_modobs2("lstm", "obs", type = "hex")
+```
+
+Nash-Sutcliffe Efficiency (for comparison to Besnard et al., 2019)
+```{r}
+hydroGOF::NSE(df_season$lstm, df_season$obs, na.rm = TRUE)
+```
+Something is weird...
+
+#### Anomalies
+
+```{r}
+df <- df %>% 
+  mutate(doy = lubridate::yday(date)) %>% 
+  left_join(df_season,
+            by = c("sitename", "doy")) %>% 
+  mutate(obs_anom = GPP_NT_VUT_REF - obs,
+         lstm_anom = LSTM - lstm,
+         dnn_anom = DNN - dnn)
+
+df %>% rbeni::analyse_modobs2("lstm_anom", "obs_anom", type = "hex")
+
+hydroGOF::NSE(df$lstm_anom, df$obs_anom, na.rm = TRUE)
+```
+
+### Across-site
+
+Get site means
+```{r}
+df_site <- df %>% 
+  mutate(doy = lubridate::yday(date)) %>% 
+  group_by(sitename) %>% 
+  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), lstm = mean(LSTM, na.rm = TRUE), dnn = mean(DNN, na.rm = TRUE))
+```
+
+No missing data
+```{r}
+visdat::vis_miss(df_site)
+```
+
+Agreement of site means
+```{r}
+df_site %>% rbeni::analyse_modobs2("lstm", "obs")
+```
+
+Nash-Sutcliffe Efficiency (for comparison to Besnard et al., 2019)
+```{r}
+hydroGOF::NSE(df_site$lstm, df_site$obs, na.rm = TRUE)
+```
+Something is weird...
+
+
+<!-- ## Comparison to physical model -->
+
+<!-- Load out-of-bag (OOB) cross validation results from Stocker et al. (2020) (file `df_metrics_oob_stocker20gmd_fig2.csv`), and from the LSTM. -->
+<!-- ```{r cars} -->
+<!-- df_oob_pmodel <- read_csv("~/mlflx/data/df_metrics_oob_stocker20gmd_fig2.csv") -->
+<!-- df_oob_mlflx <- read_csv("~/mlflx/data/lstm_100e_r2.csv") %>%  -->
+<!--   rename(rsq = R2, site = Site) -->
+<!-- ``` -->
+
+<!-- Plot histograms of R-squared of OOB-CV for the two. -->
+<!-- ```{r pressure, echo=FALSE} -->
+<!-- gg1 <- df_oob_pmodel %>%  -->
+<!--   ggplot() + -->
+<!--   geom_histogram(aes(x = rsq, y = ..count..), -->
+<!--     color = "black", alpha = 0.3, binwidth = 0.05,  -->
+<!--     position="identity") + -->
+<!--   theme_classic() + -->
+<!--   labs(x = bquote(italic(R)^2), y = "Count") + -->
+<!--   xlim(0.2, 1) -->
+
+<!-- gg2 <- df_oob_mlflx %>%  -->
+<!--   ggplot() + -->
+<!--   geom_histogram(aes(x = rsq, y = ..count..), -->
+<!--     color = "black", alpha = 0.3, binwidth = 0.05,  -->
+<!--     position="identity") + -->
+<!--   theme_classic() + -->
+<!--   labs(x = bquote(italic(R)^2), y = "Count") + -->
+<!--   xlim(0.2, 1) -->
+
+<!-- gg1 / gg2 -->
+<!-- ``` -->
+
+<!-- This is the plot I sent through Slack. -->
+<!-- ```{r pressure, echo=FALSE} -->
+<!-- df <- df_oob_pmodel %>%  -->
+<!--   rename(rsq_pmodel = rsq) %>%  -->
+<!--   full_join(df_oob_mlflx %>% rename(rsq_ml = rsq), by = "site") -->
+
+<!-- df %>%  -->
+<!--   ggplot(aes(x = rsq_pmodel, y = rsq_ml, label = site)) + -->
+<!--   geom_point(size = 2, color = "red") + -->
+<!--   theme_classic() + -->
+<!--   geom_abline(slope = 1, intercept = 0, linetype = "dotted") + -->
+<!--   xlim(0, 1) + ylim(0, 1) + -->
+<!--   geom_text_repel(min.segment.length = 0, seed = 42, box.padding = 0.5) + -->
+<!--   labs(x = bquote("Physical model" ~ italic(R)^2), y = bquote("ML" ~ italic(R)^2)) -->
+
+<!-- ggsave("~/mlflx/fig/rsq_oob_comparison.pdf", width = 5, height = 4) -->
+<!-- ``` -->
+
+
+<!-- This is something else I did for myself (beni). -->
+<!-- ```{r} -->
+<!-- # df_mlflx <- read_csv("~/mlflx/data/ddf_combined_mlflx_20210510.csv") -->
+<!-- #  -->
+<!-- # df_mlflx %>%  -->
+<!-- #   dplyr::filter(classid == "DBF") %>%  -->
+<!-- #   pull(sitename) %>%  -->
+<!-- #   unique() -->
+<!-- #  -->
+<!-- # df_mlflx %>%  -->
+<!-- #   dplyr::filter(sitename == "US-Var") %>%  -->
+<!-- #   slice(2000:3600) %>%  -->
+<!-- #   ggplot(aes(x = date)) + -->
+<!-- #   geom_line(aes(y = GPP_NT_VUT_REF)) -->
+<!-- #  -->
+<!-- # df_mlflx %>%  -->
+<!-- #   dplyr::filter(sitename == "US-Var") %>%  -->
+<!-- #   slice(2000:3600) %>%  -->
+<!-- #   ggplot(aes(x = date)) + -->
+<!-- #   geom_line(aes(y = fpar)) -->
+
+<!-- df_metrics <- df_mlflx %>%  -->
+<!--   dplyr::filter(sitename == "FR-Pue") %>%  -->
+<!--   yardstick::metrics("fpar", "GPP_NT_VUT_REF") %>%  -->
+<!--   mutate(sitename = "FR-Pue") %>%  -->
+<!--   bind_rows( -->
+<!--     df_mlflx %>%  -->
+<!--       dplyr::filter(sitename == "CH-Lae") %>%  -->
+<!--       yardstick::metrics("fpar", "GPP_NT_VUT_REF") %>%  -->
+<!--       mutate(sitename = "CH-Lae") -->
+<!--   ) %>%  -->
+<!--   dplyr::filter(.metric == "rsq") %>%  -->
+<!--   mutate(.estimate = format(.estimate, digits = 2)) -->
+
+<!-- gg1 <- df_mlflx %>%  -->
+<!--   dplyr::filter(sitename == "CH-Lae") %>%  -->
+<!--   ggplot(aes(y = GPP_NT_VUT_REF, x = fpar)) + -->
+<!--   geom_hex(bins = 30) + -->
+<!--   scale_fill_gradientn( -->
+<!--     colours = colorRampPalette( c("gray65", "navy", "red", "yellow"))(5) -->
+<!--     # , trans = "log", breaks = c(1, 10) -->
+<!--     ) + -->
+<!--   theme_classic() + -->
+<!--   labs( -->
+<!--     title = "Deciduous forest: CH-Lae",  -->
+<!--     subtitle = bquote( italic(R)^2 == .(df_metrics %>% dplyr::filter( sitename == "CH-Lae") %>% pull(.estimate))), -->
+<!--     y = expression(paste("GPP (gC m"^-2, "s"^-1, ")")), x = "MODIS EVI") + -->
+<!--   theme_classic() +  -->
+<!--   geom_smooth(method='lm', color="red", size=0.5, se=FALSE) -->
+
+<!-- gg2 <- df_mlflx %>%  -->
+<!--   dplyr::filter(sitename == "FR-Pue") %>%  -->
+<!--   ggplot(aes(y = GPP_NT_VUT_REF, x = fpar)) + -->
+<!--   geom_hex(bins = 30) + -->
+<!--   scale_fill_gradientn( -->
+<!--     colours = colorRampPalette( c("gray65", "navy", "red", "yellow"))(5) -->
+<!--     # , trans = "log", breaks = c(1, 10) -->
+<!--     ) + -->
+<!--   theme_classic() + -->
+<!--   labs( -->
+<!--     title = "Evergreen forest: FR-Pue",  -->
+<!--     subtitle = bquote( italic(R)^2 == .(df_metrics %>% dplyr::filter( sitename == "FR-Pue") %>% pull(.estimate))), -->
+<!--     y = expression(paste("GPP (gC m"^-2, "s"^-1, ")")), x = "MODIS EVI") + -->
+<!--   theme_classic()  -->
+
+<!-- gg1 + gg2 -->
+<!-- ggsave("~/polybox/fig/gpp_evi.pdf", width = 8, height = 4) -->
+<!-- ``` -->
