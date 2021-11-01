@@ -22,6 +22,15 @@ df <- read_csv("data/df_pred.csv")  # obtained from Notion -> mlflx DSLab -> Res
 ```{r}
 visdat::vis_miss(df, warn_large_data = FALSE, cluster = FALSE)
 ```
+Correct magnitude (normalised?)
+```{r}
+df %>% 
+  dplyr::filter(sitename == "US-Var") %>% 
+  pivot_longer(cols = c(GPP_NT_VUT_REF, LSTM), names_to = "source", values_to = "gpp") %>% 
+  ggplot(aes(x = gpp, fill = source)) +
+  geom_boxplot()
+```
+
 
 ### Seasonal
 
