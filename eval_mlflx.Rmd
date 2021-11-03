@@ -9,26 +9,40 @@ output: html_document
 library(tidyverse)
 library(patchwork)
 library(ggrepel)
-library(rbeni)  # get it by devtools::install_github("https://github.com/stineb/rbeni.git")
+library(rbeni)    # get it by devtools::install_github("https://github.com/stineb/rbeni.git")
+library(ingestr)  # get it by devtools::install_github("https://github.com/computationales/ingestr.git")
 ```
 
 ## LSOCV metrics
 
+### Read in
+
 Obtain outputs with this [link on Notion](https://www.notion.so/computationales/Results-2a637978b16346f98ac8c8c018ee7549#68803d0d60ca4b35b331be78c695a97c).
 ```{r}
-df <- read_csv("data/df_pred.csv")  # obtained from Notion -> mlflx DSLab -> Results -> 
+df <- read_csv("data/df_pred_denormalised.csv")  # obtained from Notion -> mlflx DSLab -> Results -> 
 ```
 
 ```{r}
 visdat::vis_miss(df, warn_large_data = FALSE, cluster = FALSE)
 ```
-Correct magnitude (normalised?)
+
+<!-- ```{r} -->
+<!-- df_train <- read_csv("data/ddf_combined_mlflx_20210510.csv") -->
+<!-- ``` -->
+
+### Daily 
 ```{r}
-df %>% 
-  dplyr::filter(sitename == "US-Var") %>% 
-  pivot_longer(cols = c(GPP_NT_VUT_REF, LSTM), names_to = "source", values_to = "gpp") %>% 
-  ggplot(aes(x = gpp, fill = source)) +
-  geom_boxplot()
+out_lstm <- df %>% 
+  analyse_modobs2("LSTM_de", "GPP_NT_VUT_REF", type = "hex")
+out_dnn <- df %>% 
+  analyse_modobs2("DNN_de", "GPP_NT_VUT_REF", type = "hex")
+
+gg1 <- out_lstm$gg +
+  labs(title = "LSTM")
+gg2 <- out_dnn$gg +
+  labs(title = "DNN")
+
+gg1 + gg2
 ```
 
 
@@ -38,40 +52,169 @@ df %>%
 df_season <- df %>% 
   mutate(doy = lubridate::yday(date)) %>% 
   group_by(sitename, doy) %>% 
-  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), lstm = mean(LSTM, na.rm = TRUE), dnn = mean(DNN, na.rm = TRUE))
+  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), lstm = mean(LSTM_de, na.rm = TRUE), dnn = mean(DNN_de, na.rm = TRUE))
 ```
 
-Practically o missing data
-```{r}
-visdat::vis_miss(df_season)
-```
+<!-- Practically o missing data -->
+<!-- ```{r} -->
+<!-- visdat::vis_miss(df_season) -->
+<!-- ``` -->
 
 Agreement of mean seasonal cycles.
 ```{r}
-df_season %>% rbeni::analyse_modobs2("lstm", "obs", type = "hex")
+out_lstm <- df_season %>% rbeni::analyse_modobs2("lstm", "obs", type = "hex")
+out_dnn <- df_season %>% rbeni::analyse_modobs2("dnn", "obs", type = "hex")
+
+gg1 <- out_lstm$gg +
+  labs(title = "LSTM")
+gg2 <- out_dnn$gg +
+  labs(title = "DNN")
+
+gg1 + gg2
 ```
 
-Nash-Sutcliffe Efficiency (for comparison to Besnard et al., 2019)
+
+Nash-Sutcliffe Efficiency (for comparison to Besnard et al., 2019: they had 0.66)
 ```{r}
+hydroGOF::NSE(df_season$dnn, df_season$obs, na.rm = TRUE)
 hydroGOF::NSE(df_season$lstm, df_season$obs, na.rm = TRUE)
 ```
-Something is weird...
 
-#### Anomalies
+#### By climate zone
 
 ```{r}
-df <- df %>% 
+df_season_kgclimate <- df %>% 
+  left_join(
+    siteinfo_fluxnet2015,
+    by = "sitename"
+  ) %>% 
+  mutate(doy = lubridate::yday(date)) %>% 
+  group_by(koeppen_code, doy) %>% 
+  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), lstm = mean(LSTM_de, na.rm = TRUE), dnn = mean(DNN_de, na.rm = TRUE))
+```
+
+Seasonal course by climate zone: LSTM works much better.
+```{r}
+df_season_kgclimate %>% 
+  filter(koeppen_code != "-") %>%
+  pivot_longer(c(obs, lstm, dnn), names_to = "source", values_to = "gpp") %>% 
+  ggplot(aes(doy, gpp, color = source)) +
+  geom_line() +
+  scale_color_manual(values = c("dnn" = "royalblue", "lstm" = "red", "obs" = "black"), labels = c("DNN", "LSTM", "obs.")) +
+  facet_wrap(~koeppen_code)
+```
+
+LSTM performs better in different aspects, possibly due to different processes inducing different temporal dependencies in different climate zones. DNN (but not or to a lesser degree LSTM) simulates:
+
+- Aw (tropical savannah): too early recovery of GPP in wet season.
+- Cfa (temperate, no dry season, hot summer), Dfb (Cold, no dry season, warm summer), Dfc (Cold, no dry season, cold summer): too early recovery of GPP in spring
+- Csa (temperate, dry summer, hot summer): underestimating peak GPP, not fast enough depression of GPP after peak season
+
+These are exemplified by looking at individual sites.
+
+- Aw (tropical savannah): too early recovery of GPP in wet season.
+
+```{r}
+df_season %>% 
+  left_join(siteinfo_fluxnet2015, by = "sitename") %>% 
+  filter(koeppen_code %in% c("Aw")) %>%
+  pivot_longer(c(obs, lstm, dnn), names_to = "source", values_to = "gpp") %>% 
+  ggplot(aes(doy, gpp, color = source)) +
+  geom_line() +
+  scale_color_manual(values = c("dnn" = "royalblue", "lstm" = "red", "obs" = "black")) +
+  facet_wrap(~sitename)
+```
+
+- Cfa (temperate, no dry season, hot summer), Dfb (Cold, no dry season, warm summer), Dfc (Cold, no dry season, cold summer): too early recovery of GPP in spring
+
+```{r}
+df_season %>% 
+  left_join(siteinfo_fluxnet2015, by = "sitename") %>% 
+  filter(koeppen_code %in% c("Cfa", "Dfb", "Dfc")) %>%
+  pivot_longer(c(obs, lstm, dnn), names_to = "source", values_to = "gpp") %>% 
+  ggplot(aes(doy, gpp, color = source)) +
+  geom_line() +
+  scale_color_manual(values = c("dnn" = "royalblue", "lstm" = "red", "obs" = "black")) +
+  facet_wrap(~sitename)
+```
+
+- Csa (temperate, dry summer, hot summer): underestimating peak GPP, not fast enough depression of GPP after peak season
+
+```{r}
+df_season %>% 
+  left_join(siteinfo_fluxnet2015, by = "sitename") %>% 
+  filter(koeppen_code == "Csa") %>%
+  pivot_longer(c(obs, lstm, dnn), names_to = "source", values_to = "gpp") %>% 
+  ggplot(aes(doy, gpp, color = source)) +
+  geom_line() +
+  scale_color_manual(values = c("dnn" = "royalblue", "lstm" = "red", "obs" = "black")) +
+  facet_wrap(~sitename)
+```
+
+### Daily anomalies
+
+Anomalies from mean seasonal cycle.
+
+```{r}
+df_anom <- df %>% 
   mutate(doy = lubridate::yday(date)) %>% 
   left_join(df_season,
             by = c("sitename", "doy")) %>% 
   mutate(obs_anom = GPP_NT_VUT_REF - obs,
-         lstm_anom = LSTM - lstm,
-         dnn_anom = DNN - dnn)
+         lstm_anom = LSTM_de - lstm,
+         dnn_anom = DNN_de - dnn)
 
-df %>% rbeni::analyse_modobs2("lstm_anom", "obs_anom", type = "hex")
 
-hydroGOF::NSE(df$lstm_anom, df$obs_anom, na.rm = TRUE)
+out_lstm <- df_anom %>% 
+  dplyr::select(mod = lstm_anom, obs = obs_anom) %>% 
+  analyse_modobs2("mod", "obs", type = "hex")
+out_dnn  <- df_anom %>% 
+  dplyr::select(mod = dnn_anom, obs = obs_anom) %>% 
+  analyse_modobs2("mod", "obs", type = "hex")
+
+gg1 <- out_lstm$gg +
+  labs(title = "LSTM")
+gg2 <- out_dnn$gg +
+  labs(title = "DNN")
+
+gg1 + gg2
+
+hydroGOF::NSE(df_anom$lstm_anom, df_anom$obs_anom, na.rm = TRUE)
+hydroGOF::NSE(df_anom$dnn_anom, df_anom$obs_anom, na.rm = TRUE)
 ```
+
+
+<!-- ```{r} -->
+<!-- out_msc  <- df_anom %>% rbeni::analyse_modobs2("obs", "GPP_NT_VUT_REF", type = "hex") -->
+<!-- out_msc$gg -->
+
+<!-- gg1 <- df_anom %>%  -->
+<!--   filter(sitename == "US-Ha1") %>%  -->
+<!--   ggplot() + -->
+<!--   geom_line(aes(date, lstm)) + -->
+<!--   geom_line(aes(date, GPP_NT_VUT_REF), color = "red", alpha = 0.5) -->
+
+<!-- gg2 <- df_anom %>%  -->
+<!--   filter(sitename == "US-Ha1") %>%  -->
+<!--   ggplot() + -->
+<!--   geom_line(aes(date, obs_anom)) -->
+
+<!-- gg3 <- df_anom %>%  -->
+<!--   filter(sitename == "US-Ha1") %>%  -->
+<!--   ggplot() + -->
+<!--   geom_line(aes(date, lstm_anom)) -->
+
+<!-- gg1 / gg2 / gg3 -->
+
+<!-- df_anom %>%  -->
+<!--   ggplot(aes(obs_anom, lstm_anom)) + -->
+<!--   geom_point(alpha = 0.2) -->
+
+<!-- df_anom %>%  -->
+<!--   dplyr::select(mod = lstm_anom, obs = obs_anom) %>%  -->
+<!--   analyse_modobs2("mod", "obs", type = "hex") -->
+<!-- ``` -->
+
 
 ### Across-site
 
@@ -80,25 +223,88 @@ Get site means
 df_site <- df %>% 
   mutate(doy = lubridate::yday(date)) %>% 
   group_by(sitename) %>% 
-  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), lstm = mean(LSTM, na.rm = TRUE), dnn = mean(DNN, na.rm = TRUE))
+  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), lstm = mean(LSTM_de, na.rm = TRUE), dnn = mean(DNN_de, na.rm = TRUE))
 ```
 
-No missing data
-```{r}
-visdat::vis_miss(df_site)
-```
+<!-- No missing data -->
+<!-- ```{r} -->
+<!-- visdat::vis_miss(df_site) -->
+<!-- ``` -->
 
 Agreement of site means
 ```{r}
-df_site %>% rbeni::analyse_modobs2("lstm", "obs")
+out_lstm <- df_site %>% 
+  rbeni::analyse_modobs2("lstm", "obs")
+out_dnn <- df_site %>% 
+  rbeni::analyse_modobs2("dnn", "obs")
+
+gg1 <- out_lstm$gg +
+  labs(title = "LSTM")
+gg2 <- out_dnn$gg +
+  labs(title = "DNN")
+
+gg1 + gg2
 ```
 
-Nash-Sutcliffe Efficiency (for comparison to Besnard et al., 2019)
+Nash-Sutcliffe Efficiency (for comparison to Besnard et al., 2019: they had 0.42)
 ```{r}
+hydroGOF::NSE(df_site$dnn, df_site$obs, na.rm = TRUE)
 hydroGOF::NSE(df_site$lstm, df_site$obs, na.rm = TRUE)
 ```
-Something is weird...
 
+### Annual
+
+Get site means
+```{r}
+df_ann <- df %>%
+  mutate(doy = lubridate::yday(date)) %>% 
+  ## fill with mean seasonal cycle for missing observations
+  left_join(df_season %>% 
+              rename(obs_meandoy = obs, lstm_meandoy = lstm, dnn_meandoy = dnn), 
+            by = c("sitename", "doy")) %>% 
+  mutate(GPP_NT_VUT_REF = ifelse(is.na(GPP_NT_VUT_REF), obs_meandoy, GPP_NT_VUT_REF)) %>% 
+  mutate(year = lubridate::year(date)) %>% 
+  group_by(sitename, year) %>% 
+  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = FALSE), lstm = mean(LSTM_de, na.rm = FALSE), dnn = mean(DNN_de, na.rm = FALSE))
+```
+
+<!-- No missing data -->
+<!-- ```{r} -->
+<!-- visdat::vis_miss(df_ann) -->
+<!-- ``` -->
+
+### Annual anomalies
+
+```{r}
+df_ann <- df_ann %>% 
+  left_join(df_ann %>% 
+              group_by(sitename) %>% 
+              summarise(obs_mean = mean(obs, na.rm = TRUE), lstm_mean = mean(lstm, na.rm = TRUE), dnn_mean = mean(dnn, na.rm = TRUE)),
+            by = c("sitename")) %>% 
+  mutate(obs_anom = obs - obs_mean,
+         lstm_anom = lstm - lstm_mean,
+         dnn_anom = dnn - dnn_mean)
+
+out_lstm <- df_ann %>% 
+  dplyr::select(mod = lstm_anom, obs = obs_anom) %>% 
+  rbeni::analyse_modobs2("mod", "obs")
+out_dnn <- df_ann %>% 
+  dplyr::select(mod = dnn_anom, obs = obs_anom) %>% 
+  rbeni::analyse_modobs2("mod", "obs")
+
+gg1 <- out_lstm$gg +
+  labs(title = "LSTM")
+gg2 <- out_dnn$gg +
+  labs(title = "DNN")
+
+gg1 + gg2
+```
+
+Besnard et al; 0.07
+```{r}
+hydroGOF::NSE(df_ann$dnn_anom, df_ann$obs_anom, na.rm = TRUE)
+hydroGOF::NSE(df_ann$lstm_anom, df_ann$obs_anom, na.rm = TRUE)
+```
 
 <!-- ## Comparison to physical model -->
 
