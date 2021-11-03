@@ -26,23 +26,40 @@ df <- read_csv("data/df_pred_denormalised.csv")  # obtained from Notion -> mlflx
 visdat::vis_miss(df, warn_large_data = FALSE, cluster = FALSE)
 ```
 
-<!-- ```{r} -->
-<!-- df_train <- read_csv("data/ddf_combined_mlflx_20210510.csv") -->
-<!-- ``` -->
+Get null model (gpp_null = c * fpar * SW_IN_F). This yields a constant c = 0.04381 (globally and temporally constant light use efficiency). Add gpp_null to df. 
+```{r}
+df_train <- read_csv("data/ddf_combined_mlflx_20210505.csv") %>% 
+  mutate(apar = fpar * SW_IN_F)
+# df_train <- read_csv("data/ddf_combined_mlflx_20210510.csv")
+
+linmod <- lm(GPP_NT_VUT_REF ~ 0 + apar, data = df_train)
+
+df <- df %>% 
+  left_join(
+    df_train %>% 
+      dplyr::select(-GPP_NT_VUT_REF),
+    by = c("sitename", "date")) %>% 
+  mutate(gpp_null = apar * linmod$coefficients[1])
+```
 
 ### Daily 
+
 ```{r}
 out_lstm <- df %>% 
-  analyse_modobs2("LSTM_de", "GPP_NT_VUT_REF", type = "hex")
+  analyse_modobs2("LSTM_de", "GPP_NT_VUT_REF", type = "hex", plot_legend = FALSE)
 out_dnn <- df %>% 
-  analyse_modobs2("DNN_de", "GPP_NT_VUT_REF", type = "hex")
+  analyse_modobs2("DNN_de", "GPP_NT_VUT_REF", type = "hex", plot_legend = FALSE)
+out_null <- df %>% 
+  analyse_modobs2("gpp_null", "GPP_NT_VUT_REF", type = "hex", plot_legend = FALSE)
 
 gg1 <- out_lstm$gg +
   labs(title = "LSTM")
 gg2 <- out_dnn$gg +
   labs(title = "DNN")
+gg3 <- out_null$gg +
+  labs(title = "NULL")
 
-gg1 + gg2
+gg1 + gg2 + gg3
 ```
 
 
@@ -52,7 +69,11 @@ gg1 + gg2
 df_season <- df %>% 
   mutate(doy = lubridate::yday(date)) %>% 
   group_by(sitename, doy) %>% 
-  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), lstm = mean(LSTM_de, na.rm = TRUE), dnn = mean(DNN_de, na.rm = TRUE))
+  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), 
+            lstm = mean(LSTM_de, na.rm = TRUE), 
+            dnn = mean(DNN_de, na.rm = TRUE),
+            null = mean(gpp_null, na.rm = TRUE)
+            )
 ```
 
 <!-- Practically o missing data -->
@@ -62,20 +83,24 @@ df_season <- df %>%
 
 Agreement of mean seasonal cycles.
 ```{r}
-out_lstm <- df_season %>% rbeni::analyse_modobs2("lstm", "obs", type = "hex")
-out_dnn <- df_season %>% rbeni::analyse_modobs2("dnn", "obs", type = "hex")
+out_lstm <- df_season %>% rbeni::analyse_modobs2("lstm", "obs", type = "hex", plot_legend = FALSE)
+out_dnn <- df_season %>% rbeni::analyse_modobs2("dnn", "obs", type = "hex", plot_legend = FALSE)
+out_null <- df_season %>% rbeni::analyse_modobs2("null", "obs", type = "hex", plot_legend = FALSE)
 
 gg1 <- out_lstm$gg +
   labs(title = "LSTM")
 gg2 <- out_dnn$gg +
   labs(title = "DNN")
+gg3 <- out_null$gg +
+  labs(title = "NULL")
 
-gg1 + gg2
+gg1 + gg2 + gg3
 ```
 
 
 Nash-Sutcliffe Efficiency (for comparison to Besnard et al., 2019: they had 0.66)
 ```{r}
+hydroGOF::NSE(df_season$null, df_season$obs, na.rm = TRUE)
 hydroGOF::NSE(df_season$dnn, df_season$obs, na.rm = TRUE)
 hydroGOF::NSE(df_season$lstm, df_season$obs, na.rm = TRUE)
 ```
@@ -84,10 +109,10 @@ hydroGOF::NSE(df_season$lstm, df_season$obs, na.rm = TRUE)
 
 ```{r}
 df_season_kgclimate <- df %>% 
-  left_join(
-    siteinfo_fluxnet2015,
-    by = "sitename"
-  ) %>% 
+  # left_join(
+  #   siteinfo_fluxnet2015,
+  #   by = "sitename"
+  # ) %>% 
   mutate(doy = lubridate::yday(date)) %>% 
   group_by(koeppen_code, doy) %>% 
   summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), lstm = mean(LSTM_de, na.rm = TRUE), dnn = mean(DNN_de, na.rm = TRUE))
@@ -162,25 +187,32 @@ df_anom <- df %>%
             by = c("sitename", "doy")) %>% 
   mutate(obs_anom = GPP_NT_VUT_REF - obs,
          lstm_anom = LSTM_de - lstm,
-         dnn_anom = DNN_de - dnn)
-
+         dnn_anom = DNN_de - dnn,
+         null_anom = gpp_null - null
+         )
 
 out_lstm <- df_anom %>% 
   dplyr::select(mod = lstm_anom, obs = obs_anom) %>% 
-  analyse_modobs2("mod", "obs", type = "hex")
+  analyse_modobs2("mod", "obs", type = "hex", plot_legend = FALSE)
 out_dnn  <- df_anom %>% 
   dplyr::select(mod = dnn_anom, obs = obs_anom) %>% 
-  analyse_modobs2("mod", "obs", type = "hex")
+  analyse_modobs2("mod", "obs", type = "hex", plot_legend = FALSE)
+out_null  <- df_anom %>% 
+  dplyr::select(mod = null_anom, obs = obs_anom) %>% 
+  analyse_modobs2("mod", "obs", type = "hex", plot_legend = FALSE)
 
 gg1 <- out_lstm$gg +
   labs(title = "LSTM")
 gg2 <- out_dnn$gg +
   labs(title = "DNN")
+gg3 <- out_null$gg +
+  labs(title = "NULL")
 
-gg1 + gg2
+gg1 + gg2 + gg3
 
+hydroGOF::NSE(df_anom$null_anom, df_anom$obs_anom, na.rm = TRUE)
+hydroGOF::NSE(df_anom$dnn_anom,  df_anom$obs_anom, na.rm = TRUE)
 hydroGOF::NSE(df_anom$lstm_anom, df_anom$obs_anom, na.rm = TRUE)
-hydroGOF::NSE(df_anom$dnn_anom, df_anom$obs_anom, na.rm = TRUE)
 ```
 
 
@@ -223,7 +255,10 @@ Get site means
 df_site <- df %>% 
   mutate(doy = lubridate::yday(date)) %>% 
   group_by(sitename) %>% 
-  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), lstm = mean(LSTM_de, na.rm = TRUE), dnn = mean(DNN_de, na.rm = TRUE))
+  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), 
+            lstm = mean(LSTM_de, na.rm = TRUE), 
+            dnn = mean(DNN_de, na.rm = TRUE),
+            null = mean(gpp_null, na.rm = TRUE))
 ```
 
 <!-- No missing data -->
@@ -237,17 +272,22 @@ out_lstm <- df_site %>%
   rbeni::analyse_modobs2("lstm", "obs")
 out_dnn <- df_site %>% 
   rbeni::analyse_modobs2("dnn", "obs")
+out_null <- df_site %>% 
+  rbeni::analyse_modobs2("null", "obs")
 
 gg1 <- out_lstm$gg +
   labs(title = "LSTM")
 gg2 <- out_dnn$gg +
   labs(title = "DNN")
+gg3 <- out_null$gg +
+  labs(title = "NULL")
 
-gg1 + gg2
+gg1 + gg2 + gg3
 ```
 
 Nash-Sutcliffe Efficiency (for comparison to Besnard et al., 2019: they had 0.42)
 ```{r}
+hydroGOF::NSE(df_site$null, df_site$obs, na.rm = TRUE)
 hydroGOF::NSE(df_site$dnn, df_site$obs, na.rm = TRUE)
 hydroGOF::NSE(df_site$lstm, df_site$obs, na.rm = TRUE)
 ```
@@ -265,7 +305,11 @@ df_ann <- df %>%
   mutate(GPP_NT_VUT_REF = ifelse(is.na(GPP_NT_VUT_REF), obs_meandoy, GPP_NT_VUT_REF)) %>% 
   mutate(year = lubridate::year(date)) %>% 
   group_by(sitename, year) %>% 
-  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = FALSE), lstm = mean(LSTM_de, na.rm = FALSE), dnn = mean(DNN_de, na.rm = FALSE))
+  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = FALSE), 
+            lstm = mean(LSTM_de, na.rm = FALSE), 
+            null = mean(gpp_null, na.rm = FALSE), 
+            dnn = mean(DNN_de, na.rm = FALSE)
+            )
 ```
 
 <!-- No missing data -->
@@ -279,10 +323,14 @@ df_ann <- df %>%
 df_ann <- df_ann %>% 
   left_join(df_ann %>% 
               group_by(sitename) %>% 
-              summarise(obs_mean = mean(obs, na.rm = TRUE), lstm_mean = mean(lstm, na.rm = TRUE), dnn_mean = mean(dnn, na.rm = TRUE)),
+              summarise(obs_mean = mean(obs, na.rm = TRUE), 
+                        lstm_mean = mean(lstm, na.rm = TRUE), 
+                        null_mean = mean(null, na.rm = TRUE), 
+                        dnn_mean = mean(dnn, na.rm = TRUE)),
             by = c("sitename")) %>% 
   mutate(obs_anom = obs - obs_mean,
          lstm_anom = lstm - lstm_mean,
+         null_anom = null - null_mean,
          dnn_anom = dnn - dnn_mean)
 
 out_lstm <- df_ann %>% 
@@ -291,17 +339,23 @@ out_lstm <- df_ann %>%
 out_dnn <- df_ann %>% 
   dplyr::select(mod = dnn_anom, obs = obs_anom) %>% 
   rbeni::analyse_modobs2("mod", "obs")
+out_null <- df_ann %>% 
+  dplyr::select(mod = null_anom, obs = obs_anom) %>% 
+  rbeni::analyse_modobs2("mod", "obs")
 
 gg1 <- out_lstm$gg +
   labs(title = "LSTM")
 gg2 <- out_dnn$gg +
   labs(title = "DNN")
+gg3 <- out_null$gg +
+  labs(title = "NULL")
 
-gg1 + gg2
+gg1 + gg2 + gg3
 ```
 
 Besnard et al; 0.07
 ```{r}
+hydroGOF::NSE(df_ann$null_anom, df_ann$obs_anom, na.rm = TRUE)
 hydroGOF::NSE(df_ann$dnn_anom, df_ann$obs_anom, na.rm = TRUE)
 hydroGOF::NSE(df_ann$lstm_anom, df_ann$obs_anom, na.rm = TRUE)
 ```
