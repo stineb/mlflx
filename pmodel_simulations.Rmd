@@ -8,9 +8,12 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(rsofun)
+library(ingestr)
+library(rbeni)
 ```
 
-## Read data
+## Get data
 
 This is example data for FR-Pue. Make forcing into this.
 ```{r}
@@ -19,5 +22,300 @@ p_model_fluxnet_drivers$forcing
 ```
 
 ```{r}
+kfFEC <- 2.04
+
 df <- read_csv("data/ddf_combined_mlflx_20210510.csv")
+usesites <- df %>% pull(sitename) %>% unique()
+
+siteinfo <- siteinfo_fluxnet2015 %>% 
+  dplyr::filter(sitename %in% usesites)
+
+## rename and redefine
+df <- df %>% 
+  dplyr::select(sitename,
+                date,
+                SW_IN_F,
+                temp = TA_F,
+                prec = PA_F,
+                vpd = VPD_F,
+                patm = PA_F,
+                fapar = fpar) %>% 
+  mutate(ppfd = SW_IN_F * kfFEC * 1.0e-6,
+         rain = ifelse(temp > 1, prec, 0),
+         snow = ifelse(temp <= 1, prec, 0),
+         tmin = temp,
+         tmax = temp)
+         
+## get cloud cover from CRU
+filn <- "data/df_cru.rds"
+if (!file.exists(filn)){
+  df_cru <- ingestr::ingest(
+    siteinfo  = siteinfo,
+    source    = "cru",
+    getvars   = "ccov",
+    dir       = "~/data/cru/ts_4.01/"
+    )
+  saveRDS(df_cru, filn)
+} else {
+  df_cru <- readRDS(filn)
+}
+
+
+
+## add it to other data
+df <- df %>% 
+  left_join(
+    df_cru %>% 
+      unnest(data) %>% 
+      dplyr::select(-ccov_int),
+    by = c("sitename", "date")
+  )
+
+## get co2 data
+df_co2 <- ingestr::ingest(
+  siteinfo,
+  source  = "co2_mlo",
+  verbose = FALSE
+  )
+
+## ... add it to other data
+df <- df %>% 
+  left_join(
+    df_co2 %>% 
+      unnest(data),
+    by = c("sitename", "date")
+  )
+
+## drop leap year 29 feb
+df <- df %>% 
+  mutate(year = lubridate::year(date),
+         dom = lubridate::mday(date),
+         moy = lubridate::month(date)) %>%
+  dplyr::filter(!(moy == 2 & dom == 29)) %>% 
+  group_by(sitename, year) %>% 
+  nest() %>% 
+  mutate(frac_of_year = purrr::map_dbl(data, ~{nrow(.)/365})) %>% 
+  dplyr::filter(frac_of_year == 1.00) %>% 
+  dplyr::select(-frac_of_year) %>% 
+  unnest(data)
+
+saveRDS(df, file = "data/df_forcing.rds")
 ```
+
+## Make standard
+
+Correct site info based on available forcing data.
+```{r}
+df_years <- df %>% 
+  mutate(year = lubridate::year(date)) %>% 
+  group_by(sitename) %>% 
+  summarise(year_start = min(year),
+            year_end = max(year))
+
+siteinfo <- siteinfo %>% 
+  dplyr::select(-year_start, -year_end) %>% 
+  left_join(
+    df_years,
+    by = "sitename"
+  )
+```
+
+Create drivers data frame
+```{r}
+params_siml <- list(
+  spinup             = TRUE,
+  spinupyears        = 10,
+  recycle            = 1,
+  soilmstress        = TRUE,
+  tempstress         = TRUE,
+  calc_aet_fapar_vpd = FALSE,
+  in_ppfd            = TRUE,
+  in_netrad          = FALSE,
+  outdt              = 1,
+  ltre               = FALSE,
+  ltne               = FALSE,
+  ltrd               = FALSE,
+  ltnd               = FALSE,
+  lgr3               = TRUE,
+  lgn3               = FALSE,
+  lgr4               = FALSE
+	)
+
+df_soiltexture <- bind_rows(
+  top    = tibble(
+    layer = "top",
+    fsand = 0.4,
+    fclay = 0.3,
+    forg = 0.1,
+    fgravel = 0.1
+    ),
+  bottom = tibble(
+    layer = "bottom",
+    fsand = 0.4,
+    fclay = 0.3,
+    forg = 0.1,
+    fgravel = 0.1)
+)
+
+p_model_fluxnet_drivers <- collect_drivers_sofun(
+  site_info      = siteinfo_fluxnet2015 %>% 
+    dplyr::filter(sitename %in% usesites),
+  params_siml    = params_siml,
+  meteo          = df %>%
+    dplyr::select(-fapar, -co2) %>% 
+    group_by(sitename) %>%
+    tidyr::nest(),
+  fapar          = df %>%
+    dplyr::select(sitename, date, fapar) %>% 
+    group_by(sitename) %>%
+    tidyr::nest(),
+  co2            = df %>%
+    dplyr::select(sitename, date, co2) %>% 
+    group_by(sitename) %>%
+    tidyr::nest(),
+  params_soil    = df_soiltexture
+  )
+```
+
+## Run model
+
+Test for all sites.
+```{r}
+params_modl <- list(
+    kphio           = 0.09423773,
+    soilm_par_a     = 0.33349283,
+    soilm_par_b     = 1.45602286,
+    tau_acclim_tempstress = 10,
+    par_shape_tempstress  = 0.0
+  )
+
+test <- rsofun::runread_pmodel_f(
+  p_model_fluxnet_drivers,
+  par = params_modl
+  )
+
+test$data[[4]] %>% 
+  ggplot(aes(date, gpp)) +
+  geom_line()
+```
+
+
+## Calibrate model.
+
+Target data should look like this:
+```{r}
+p_model_validation
+p_model_validation$data
+```
+
+```{r}
+df_calib <- read_csv("data/ddf_combined_mlflx_20210510.csv") %>% 
+  dplyr::select(sitename, date, gpp = GPP_NT_VUT_REF) %>%
+  mutate(gpp_unc = 0.0) %>% 
+  group_by(sitename) %>% 
+  nest()
+```
+
+```{r}
+settings <- list(
+  method      = "bayesiantools",
+  targetvars  = c("gpp"),
+  timescale   = list(targets_obs = "y"),
+  metric      = cost_rmse_fullstack,
+  dir_results = "./",
+  name        = "mlflx",
+  control = list(
+    sampler = "DEzs",
+    settings = list(
+      burnin = 1000,
+      iterations = 5000
+    )
+  ),
+  par = list(
+    kphio = list(lower=0.04, upper=0.1, init = 0.05),
+    a = list(lower=0, upper=5, init = 3.5),
+    b = list(lower=1, upper=5, init=3.5),
+    tau = list(lower=0, upper=15, init=1),
+    shape = list(lower=0, upper=0.1, init=0)
+    )
+)
+
+# ## using GenSA
+# settings <- list(
+#   method      = "gensa",
+#   targetvars  = c("gpp"),
+#   timescale   = list(targets_obs = "y"),
+#   metric      = cost_rmse_fullstack,
+#   dir_results = "./",
+#   name        = "mlflx",
+#   control = list( 
+#                   #temperature=4000, 
+#                   max.call=5,
+#                   trace.mat=TRUE,
+#                   threshold.stop=1e-4,
+#                   max.time=300
+#                   ),
+#   par = list(
+#     kphio = list(lower=0.04, upper=0.1, init = 0.05),
+#     a = list(lower=0, upper=5, init = 3.5),
+#     b = list(lower=1, upper=5, init=3.5),
+#     tau = list(lower=0, upper=15, init=1),
+#     shape = list(lower=0, upper=0.1, init=0)
+#     )
+# )
+
+pars <- suppressWarnings(
+  calib_sofun(
+    drivers = p_model_fluxnet_drivers,
+    obs = df_calib,
+    settings = settings
+  )
+)
+
+saveRDS(pars, file = "./data/pars_calib.rds")
+```
+
+Run the model again with calibrated parameters
+```{r warning=FALSE, message=FALSE}
+params_modl <- list(
+    kphio           = pars$par[1],
+    soilm_par_a     = pars$par[2],
+    soilm_par_b     = pars$par[3],
+    tau_acclim_tempstress = pars$par[4],
+    par_shape_tempstress  = pars$par[5]
+  )
+
+output <- rsofun::runread_pmodel_f(
+  p_model_fluxnet_drivers,
+  par = params_modl
+  )
+
+saveRDS(output, file = "./data/df_output_rsofun.rds")
+
+output$data[[4]] %>% 
+  ggplot(aes(date, gpp)) +
+  geom_line()
+```
+
+
+## Evaluate model
+
+```{r}
+df_modobs <- df_calib %>% 
+  unnest(data) %>% 
+  left_join(
+    output %>% 
+      unnest(data) %>% 
+      dplyr::select(sitename, date, pmodel = gpp),
+    by = c("sitename", "date")
+  )
+
+df_modobs %>% 
+  analyse_modobs2("pmodel", "gpp", type = "hex")
+```
+
+## LSOCV
+
+```{r}
+
+````
