@@ -1,0 +1,23 @@
+---
+title: "P-model simulations"
+author: "Beni"
+date: "11/12/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Read data
+
+This is example data for FR-Pue. Make forcing into this.
+```{r}
+p_model_fluxnet_drivers <- rsofun::p_model_drivers
+p_model_fluxnet_drivers$forcing
+```
+
+```{r}
+df <- read_csv("data/ddf_combined_mlflx_20210510.csv")
+```
