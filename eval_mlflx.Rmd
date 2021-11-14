@@ -24,19 +24,25 @@ df <- read_csv("data/df_pred_denormalised.csv")  # obtained from Notion -> mlflx
 usesites <- df$sitename %>% unique()
 
 ## Add P-model results
-if (!exists("out_oob_FULL")){
-  load("~/eval_pmodel/calib_results/out_oob_FULL.Rdata")
-}
+df <- df %>% 
+  left_join(
+    read_csv("data/out_lsocv.csv") %>% 
+      dplyr::select(sitename, date, pmodel = mod),
+    by = c("sitename", "date"))
 
-## for mlflx dslab course
-df <- out_oob_FULL %>%
-  purrr::map("gpp") %>%
-  purrr::map("fluxnet2015") %>%
-  purrr::map("data") %>%
-  purrr::map("ddf") %>%
-  bind_rows(.id = "sitename") %>% 
-  select(sitename, date, pmodel = mod) %>% 
-  right_join(df, by = c("sitename", "date"))
+# if (!exists("out_oob_FULL")){
+#   load("~/eval_pmodel/calib_results/out_oob_FULL.Rdata")
+# }
+# 
+# ## for mlflx dslab course
+# df <- out_oob_FULL %>%
+#   purrr::map("gpp") %>%
+#   purrr::map("fluxnet2015") %>%
+#   purrr::map("data") %>%
+#   purrr::map("ddf") %>%
+#   bind_rows(.id = "sitename") %>% 
+#   select(sitename, date, pmodel = mod) %>% 
+#   right_join(df, by = c("sitename", "date"))
 ```
 
 ```{r eval=FALSE}
@@ -50,7 +56,7 @@ df %>%
 
 Get null model (gpp_null = c * fpar * SW_IN_F). This yields a constant c = 0.04381 (globally and temporally constant light use efficiency). Add gpp_null to df. 
 ```{r}
-df_train <- read_csv("data/ddf_combined_mlflx_20210505.csv") %>% 
+df_train <- read_csv("data/ddf_combined_mlflx_20210510.csv") %>% 
   mutate(apar = fpar * SW_IN_F)
 # df_train <- read_csv("data/ddf_combined_mlflx_20210510.csv")
 
@@ -64,10 +70,11 @@ df <- df %>%
   mutate(gpp_null = apar * linmod$coefficients[1])
 ```
 
-```{r}
-df_oob_pmodel <- read_csv("~/mlflx/data/df_metrics_oob_stocker20gmd_fig2.csv") %>% 
-  filter(site %in% usesites)
-```
+
+<!-- ```{r} -->
+<!-- df_oob_pmodel <- read_csv("~/mlflx/data/df_metrics_oob_stocker20gmd_fig2.csv") %>%  -->
+<!--   filter(site %in% usesites) -->
+<!-- ``` -->
 
 ### Daily 
 
@@ -103,10 +110,6 @@ df %>%
   mean()
 
 # P-model
-df_oob_pmodel %>% 
-  pull(rsq) %>% 
-  mean()
-
 df %>% 
   group_by(sitename) %>% 
   nest() %>% 

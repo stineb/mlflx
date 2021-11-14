@@ -42,7 +42,7 @@ lsocv_sofun <- function(
 }
 
 lsocv_sofun_bysite <- function(
-  sitename,
+  thissite,
   drivers,
   obs,
   settings
@@ -52,9 +52,9 @@ lsocv_sofun_bysite <- function(
   pars <- suppressWarnings(
     calib_sofun(
       drivers = p_model_fluxnet_drivers %>% 
-        dplyr::filter(sitename != sitename),  
+        dplyr::filter(sitename != thissite),  
       obs = df_calib %>% 
-        dplyr::filter(sitename != sitename),
+        dplyr::filter(sitename != thissite),
       settings = settings
     )
   )
@@ -71,13 +71,13 @@ lsocv_sofun_bysite <- function(
   ## predict at this site
   output <- rsofun::runread_pmodel_f(
     p_model_fluxnet_drivers %>% 
-      dplyr::filter(sitename == sitename),
+      dplyr::filter(sitename == thissite),
     par = params_modl
   )
   
   ## create reduced data frame
   df_modobs <- df_calib %>% 
-    dplyr::filter(sitename == sitename) %>% 
+    dplyr::filter(sitename == thissite) %>% 
     unnest(data) %>% 
     left_join(
       output %>% 

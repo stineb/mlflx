@@ -227,8 +227,8 @@ settings <- list(
   control = list(
     sampler = "DEzs",
     settings = list(
-      burnin = 1000,
-      iterations = 5000
+      burnin = 100,
+      iterations = 500
     )
   ),
   par = list(
@@ -317,5 +317,18 @@ df_modobs %>%
 ## LSOCV
 
 ```{r}
+source("R/lsocv_sofun.R")
+out_lsocv <- lsocv_sofun(
+  drivers = p_model_fluxnet_drivers,
+  obs = df_calib,
+  settings = settings
+)
+saveRDS(out_lsocv, file = "data/out_lsocv.rds")
+out_lsocv %>% 
+  bind_rows() %>%
+  write_csv("data/out_lsocv.csv")
 
+out_lsocv %>% 
+  bind_rows() %>% 
+  analyse_modobs2("mod", "gpp", type = "hex")
 ````
