@@ -82,6 +82,42 @@ df <- df %>%
 
 Evaluation as means across predictions from the LSOCV.
 ```{r}
+## LSOCV metrics df
+df_lsocv_metrics <- df %>% 
+  group_by(sitename) %>% 
+  nest() %>% 
+  mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, LSTM_de, na_rm = TRUE))) %>% 
+  mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
+  dplyr::select(sitename, rsq_lstm = rsq) %>% 
+  left_join(
+    df %>% 
+      group_by(sitename) %>% 
+      nest() %>% 
+      mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, DNN_de, na_rm = TRUE))) %>% 
+      mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
+      dplyr::select(sitename, rsq_dnn = rsq),
+    by = "sitename"
+  ) %>% 
+  left_join(
+    df %>% 
+      group_by(sitename) %>% 
+      nest() %>% 
+      mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, pmodel, na_rm = TRUE))) %>% 
+      mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
+      dplyr::select(sitename, rsq_pmodel = rsq),
+    by = "sitename"
+  ) %>% 
+  left_join(
+    df %>% 
+      group_by(sitename) %>% 
+      nest() %>% 
+      mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, gpp_null, na_rm = TRUE))) %>% 
+      mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
+      dplyr::select(sitename, rsq_null = rsq),
+    by = "sitename"
+  )
+
+
 # LSTM
 df %>% 
   group_by(sitename) %>% 
@@ -118,6 +154,46 @@ df %>%
   pull(rsq) %>% 
   mean()
 ```
+
+Benchmark plots
+```{r}
+gg1 <- df_lsocv_metrics %>% 
+  ggplot(aes(rsq_null, rsq_lstm, label = sitename)) +
+  geom_point(color = "red") +
+  xlim(0,1) + ylim(0,1) +
+  geom_abline(yintercept = 0, slope = 1, linetype = "dotted") +
+  theme_classic() +
+  labs(x = bquote( "NULL model" ~ italic(R)^2),
+       y = bquote( "LSTM" ~ italic(R)^2),
+       title = "LSTM") +
+  geom_text_repel(min.segment.length = 0, seed = 42, box.padding = 0.5)
+
+gg2 <- df_lsocv_metrics %>% 
+  ggplot(aes(rsq_null, rsq_dnn, label = sitename)) +
+  geom_point(color = "red") +
+  xlim(0,1) + ylim(0,1) +
+  geom_abline(yintercept = 0, slope = 1, linetype = "dotted") +
+  theme_classic() +
+  labs(x = bquote( "NULL model" ~ italic(R)^2),
+       y = bquote( "DNN" ~ italic(R)^2),
+       title = "DNN") +
+  geom_text_repel(min.segment.length = 0, seed = 42, box.padding = 0.5)
+
+## for p-model
+gg3 <- df_lsocv_metrics %>% 
+  ggplot(aes(rsq_null, rsq_pmodel, label = sitename)) +
+  geom_point(color = "red") +
+  xlim(0,1) + ylim(0,1) +
+  geom_abline(yintercept = 0, slope = 1, linetype = "dotted") +
+  theme_classic() +
+  labs(x = bquote( "NULL model" ~ italic(R)^2),
+       y = bquote( "P-model" ~ italic(R)^2),
+       title = "P-model") +
+  geom_text_repel(min.segment.length = 0, seed = 42, box.padding = 0.5)
+
+gg1 + gg2
+```
+
 
 #### All data pooled
 ```{r}
