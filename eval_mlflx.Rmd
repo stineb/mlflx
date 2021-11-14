@@ -653,18 +653,18 @@ df_ann %>%
 
 ## Comparison to physical model
 
-Load out-of-bag (OOB) cross validation results from Stocker et al. (2020) (file `df_metrics_oob_stocker20gmd_fig2.csv`), and from the LSTM.
-```{r cars}
-usesites <- df$sitename %>% unique()
+<!-- Load out-of-bag (OOB) cross validation results from Stocker et al. (2020) (file `df_metrics_oob_stocker20gmd_fig2.csv`), and from the LSTM. -->
+<!-- ```{r cars} -->
+<!-- usesites <- df$sitename %>% unique() -->
 
-df_oob_pmodel <- read_csv("~/mlflx/data/df_metrics_oob_stocker20gmd_fig2.csv") %>% 
-  filter(site %in% usesites)
+<!-- df_oob_pmodel <- read_csv("~/mlflx/data/df_metrics_oob_stocker20gmd_fig2.csv") %>%  -->
+<!--   filter(site %in% usesites) -->
 
-df_oob_mlflx
+<!-- df_oob_pmodel -->
 
-df_oob_mlflx <- read_csv("~/mlflx/data/lstm_100e_r2.csv") %>%
-  rename(rsq = R2, site = Site)
-```
+<!-- df_oob_pmodel <- read_csv("~/mlflx/data/lstm_100e_r2.csv") %>% -->
+<!--   rename(rsq = R2, site = Site) -->
+<!-- ``` -->
 
 <!-- Plot histograms of R-squared of OOB-CV for the two. -->
 <!-- ```{r pressure, echo=FALSE} -->
