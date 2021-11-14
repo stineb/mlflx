@@ -100,15 +100,6 @@ df %>%
   pull(rsq) %>% 
   mean()
 
-# NULL
-df %>% 
-  group_by(sitename) %>% 
-  nest() %>% 
-  mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, gpp_null, na_rm = TRUE))) %>% 
-  mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
-  pull(rsq) %>% 
-  mean()
-
 # P-model
 df %>% 
   group_by(sitename) %>% 
@@ -117,6 +108,15 @@ df %>%
   mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
   pull(rsq) %>% 
   mean(na.rm = TRUE)
+
+# NULL
+df %>% 
+  group_by(sitename) %>% 
+  nest() %>% 
+  mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, gpp_null, na_rm = TRUE))) %>% 
+  mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
+  pull(rsq) %>% 
+  mean()
 ```
 
 #### All data pooled
@@ -240,7 +240,7 @@ df_season_kgclimate <- df %>%
   # ) %>% 
   mutate(doy = lubridate::yday(date),
          northsouth = ifelse(lat>0, "North", "South")) %>% 
-  filter(koeppen_code != "-") %>%
+  dplyr::filter(koeppen_code != "-") %>%
   mutate(kg_code_northsouth = paste(koeppen_code, northsouth)) %>% 
   group_by(kg_code_northsouth, doy) %>% 
   summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), lstm = mean(LSTM_de, na.rm = TRUE), dnn = mean(DNN_de, na.rm = TRUE))
@@ -273,7 +273,7 @@ These are exemplified by looking at individual sites.
 ```{r}
 df_season %>% 
   left_join(siteinfo_fluxnet2015, by = "sitename") %>% 
-  filter(koeppen_code %in% c("Aw")) %>%
+  dplyr::filter(koeppen_code %in% c("Aw")) %>%
   pivot_longer(c(obs, lstm, dnn), names_to = "source", values_to = "gpp") %>% 
   ggplot(aes(doy, gpp, color = source)) +
   geom_line() +
@@ -286,7 +286,7 @@ df_season %>%
 ```{r}
 df_season %>% 
   left_join(siteinfo_fluxnet2015, by = "sitename") %>% 
-  filter(koeppen_code %in% c("Cfa", "Dfb", "Dfc")) %>%
+  dplyr::filter(koeppen_code %in% c("Cfa", "Dfb", "Dfc")) %>%
   pivot_longer(c(obs, lstm, dnn), names_to = "source", values_to = "gpp") %>% 
   ggplot(aes(doy, gpp, color = source)) +
   geom_line() +
@@ -299,7 +299,7 @@ df_season %>%
 ```{r}
 df_season %>% 
   left_join(siteinfo_fluxnet2015, by = "sitename") %>% 
-  filter(koeppen_code == "Csa") %>%
+  dplyr::filter(koeppen_code == "Csa") %>%
   pivot_longer(c(obs, lstm, dnn), names_to = "source", values_to = "gpp") %>% 
   ggplot(aes(doy, gpp, color = source)) +
   geom_line() +
@@ -605,9 +605,10 @@ gg1 + gg2 + gg3 + gg4
 
 Besnard et al; 0.07
 ```{r}
-hydroGOF::NSE(df_ann$null_anom, df_ann$obs_anom, na.rm = TRUE)
-hydroGOF::NSE(df_ann$dnn_anom, df_ann$obs_anom, na.rm = TRUE)
 hydroGOF::NSE(df_ann$lstm_anom, df_ann$obs_anom, na.rm = TRUE)
+hydroGOF::NSE(df_ann$dnn_anom, df_ann$obs_anom, na.rm = TRUE)
+hydroGOF::NSE(df_ann$pmodel_anom, df_ann$obs_anom, na.rm = TRUE)
+hydroGOF::NSE(df_ann$null_anom, df_ann$obs_anom, na.rm = TRUE)
 ```
 
 
@@ -627,6 +628,15 @@ df_ann %>%
   group_by(sitename) %>% 
   nest() %>% 
   mutate(out = purrr::map(data, ~rsq(., obs_anom, dnn_anom, na_rm = TRUE))) %>% 
+  mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
+  pull(rsq) %>% 
+  mean(na.rm = TRUE)
+
+# P-model
+df_ann %>% 
+  group_by(sitename) %>% 
+  nest() %>% 
+  mutate(out = purrr::map(data, ~rsq(., obs_anom, pmodel_anom, na_rm = TRUE))) %>% 
   mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
   pull(rsq) %>% 
   mean(na.rm = TRUE)
