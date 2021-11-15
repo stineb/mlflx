@@ -17,9 +17,7 @@ library(recipes)
 library(caret)
 ```
 
-## 
-
-### Read in
+## Read in
 
 ```{r}
 df <- read_csv("data/ddf_combined_mlflx_20210510.csv")
@@ -36,9 +34,7 @@ df <- df %>%
   drop_na()
 ```
 
-## Train a model
-
-### Caret Random Forest
+## Model training
 
 Using the caret library with hyperparameter based on best results from above. This is useful to get CV results.
 Slightly better results without imputation, instead of dropping data.
