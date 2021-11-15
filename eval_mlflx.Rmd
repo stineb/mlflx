@@ -12,6 +12,7 @@ library(ggrepel)
 library(yardstick)
 library(rbeni)    # get it by devtools::install_github("https://github.com/stineb/rbeni.git")
 library(ingestr)  # get it by devtools::install_github("https://github.com/computationales/ingestr.git")
+library(cowplot)
 ```
 
 ## LSOCV metrics
@@ -82,6 +83,42 @@ df <- df %>%
 
 Evaluation as means across predictions from the LSOCV.
 ```{r}
+## LSOCV metrics df
+df_lsocv_metrics <- df %>% 
+  group_by(sitename) %>% 
+  nest() %>% 
+  mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, LSTM_de, na_rm = TRUE))) %>% 
+  mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
+  dplyr::select(sitename, rsq_lstm = rsq) %>% 
+  left_join(
+    df %>% 
+      group_by(sitename) %>% 
+      nest() %>% 
+      mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, DNN_de, na_rm = TRUE))) %>% 
+      mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
+      dplyr::select(sitename, rsq_dnn = rsq),
+    by = "sitename"
+  ) %>% 
+  left_join(
+    df %>% 
+      group_by(sitename) %>% 
+      nest() %>% 
+      mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, pmodel, na_rm = TRUE))) %>% 
+      mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
+      dplyr::select(sitename, rsq_pmodel = rsq),
+    by = "sitename"
+  ) %>% 
+  left_join(
+    df %>% 
+      group_by(sitename) %>% 
+      nest() %>% 
+      mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, gpp_null, na_rm = TRUE))) %>% 
+      mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
+      dplyr::select(sitename, rsq_null = rsq),
+    by = "sitename"
+  )
+
+
 # LSTM
 df %>% 
   group_by(sitename) %>% 
@@ -119,6 +156,47 @@ df %>%
   mean()
 ```
 
+Benchmark plots
+```{r}
+gg1 <- df_lsocv_metrics %>% 
+  ggplot(aes(rsq_null, rsq_lstm, label = sitename)) +
+  geom_point(color = "red") +
+  xlim(0,1) + ylim(0,1) +
+  geom_abline(yintercept = 0, slope = 1, linetype = "dotted") +
+  theme_classic() +
+  labs(x = bquote( "NULL model" ~ italic(R)^2),
+       y = bquote( "LSTM" ~ italic(R)^2),
+       title = "LSTM") +
+  geom_text_repel(min.segment.length = 0, seed = 42, box.padding = 0.5)
+
+gg2 <- df_lsocv_metrics %>% 
+  ggplot(aes(rsq_null, rsq_dnn, label = sitename)) +
+  geom_point(color = "red") +
+  xlim(0,1) + ylim(0,1) +
+  geom_abline(yintercept = 0, slope = 1, linetype = "dotted") +
+  theme_classic() +
+  labs(x = bquote( "NULL model" ~ italic(R)^2),
+       y = bquote( "DNN" ~ italic(R)^2),
+       title = "DNN") +
+  geom_text_repel(min.segment.length = 0, seed = 42, box.padding = 0.5)
+
+## for p-model
+gg3 <- df_lsocv_metrics %>% 
+  ggplot(aes(rsq_null, rsq_pmodel, label = sitename)) +
+  geom_point(color = "red") +
+  xlim(0,1) + ylim(0,1) +
+  geom_abline(yintercept = 0, slope = 1, linetype = "dotted") +
+  theme_classic() +
+  labs(x = bquote( "NULL model" ~ italic(R)^2),
+       y = bquote( "P-model" ~ italic(R)^2),
+       title = "P-model") +
+  geom_text_repel(min.segment.length = 0, seed = 42, box.padding = 0.5)
+
+plot_grid(gg1, gg2, labels = c("a", "b"))
+ggsave("fig/lsocv_benchmarking.pdf", width = 10, height = 5)
+```
+
+
 #### All data pooled
 ```{r}
 out_lstm <- df %>% 
@@ -140,6 +218,78 @@ gg4 <- out_null$gg +
   labs(title = "NULL")
 
 gg1 + gg2 + gg3 + gg4
+```
+
+### Example time series
+
+#### AU-DaP
+
+```{r}
+df %>% 
+  dplyr::filter(sitename == "AU-DaP" & lubridate::year(date) %in% c(2009)) %>% 
+  rename(lstm = LSTM_de, dnn = DNN_de, null = gpp_null, obs = GPP_NT_VUT_REF) %>% 
+  pivot_longer(c(obs, lstm, dnn, null),
+               names_to = "model", 
+               values_to = "gpp") %>% 
+  ggplot(aes(date, gpp, color = model)) +
+  scale_color_manual(
+    values = c("dnn" = "royalblue", "lstm" = "red", "obs" = "black", "null" = "grey70"),
+    labels = c("DNN", "LSTM", "obs.", "NULL")
+    ) +
+  geom_line() +
+  labs(y = expression( paste("GPP (g C m"^-2, " d"^-1, ")" ) ),
+       x = "Date",
+       title = "AU-DaP") +
+  theme_classic() +
+  geom_hline(yintercept = 0, linetype = "dotted")
+```
+
+#### AU-Whr
+
+```{r}
+df %>% 
+  dplyr::filter(sitename == "AU-Whr" 
+                # & lubridate::year(date) %in% c(2013)
+                ) %>% 
+  rename(lstm = LSTM_de, dnn = DNN_de, null = gpp_null, obs = GPP_NT_VUT_REF) %>% 
+  pivot_longer(c(obs, lstm, dnn, null),
+               names_to = "model", 
+               values_to = "gpp") %>% 
+  ggplot(aes(date, gpp, color = model)) +
+  scale_color_manual(
+    values = c("dnn" = "royalblue", "lstm" = "red", "obs" = "black", "null" = "grey70"),
+    labels = c("DNN", "LSTM", "obs.", "NULL")
+    ) +
+  geom_line() +
+  labs(y = expression( paste("GPP (g C m"^-2, " d"^-1, ")" ) ),
+       x = "Date",
+       title = "AU-Whr") +
+  theme_classic() +
+  geom_hline(yintercept = 0, linetype = "dotted")
+```
+
+#### AU-How
+
+```{r}
+df %>% 
+  dplyr::filter(sitename == "AU-How" 
+                & lubridate::year(date) %in% 2005:2008
+                ) %>% 
+  rename(lstm = LSTM_de, dnn = DNN_de, null = gpp_null, obs = GPP_NT_VUT_REF) %>% 
+  pivot_longer(c(obs, lstm, dnn, null),
+               names_to = "model", 
+               values_to = "gpp") %>% 
+  ggplot(aes(date, gpp, color = model)) +
+  scale_color_manual(
+    values = c("dnn" = "royalblue", "lstm" = "red", "obs" = "black", "null" = "grey70"),
+    labels = c("DNN", "LSTM", "obs.", "NULL")
+    ) +
+  geom_line() +
+  labs(y = expression( paste("GPP (g C m"^-2, " d"^-1, ")" ) ),
+       x = "Date",
+       title = "AU-How") +
+  theme_classic() +
+  geom_hline(yintercept = 0, linetype = "dotted")
 ```
 
 ### Seasonal
@@ -651,7 +801,202 @@ df_ann %>%
   mean(na.rm = TRUE)
 ```
 
-## Comparison to physical model
+## LGOCV: Vegetation type
+
+```{r}
+## code from lvocv.R
+# dbf <- read_csv("data/DBF.csv")
+# mf <- read_csv("data/MF.csv")
+# gra <- read_csv("data/GRA.csv")
+# enf <- read_csv("data/ENF.csv")
+
+gg1 <- ggplot(dbf, aes(x=group, y=bias)) +
+  geom_violin(draw_quantiles =0.5) + ylim(-4,4) +
+  labs(title="LGOCV trained on DBF",
+       x="Vegetation Type", 
+       y = expression(paste("Bias (gC m"^-2, "d"^-1, ")"))
+       ) + 
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  theme(plot.title = element_text(face="bold")) + 
+  theme_classic()
+
+gg2 <- ggplot(mf, aes(x=group, y=bias)) +
+  geom_violin(draw_quantiles =0.5) + ylim(-4,4) +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  labs(title="LGOCV trained on MF",
+       x="Vegetation Type", 
+       y = expression(paste("Bias (gC m"^-2, "d"^-1, ")"))
+       )+ 
+  theme(plot.title = element_text(face="bold")) + 
+  theme_classic()
+
+gg3 <- ggplot(gra, aes(x=group, y=bias)) +
+  geom_violin(draw_quantiles =0.5) + ylim(-4,4) +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  labs(title="LGOCV trained on GRA",
+       x="Vegetation Type", 
+       y = expression(paste("Bias (gC m"^-2, "d"^-1, ")"))
+       )+ 
+  theme(plot.title = element_text(face="bold")) + 
+  theme_classic()
+
+gg4 <- ggplot(enf, aes(x=group, y=bias)) +
+  geom_violin(draw_quantiles =0.5) + ylim(-4,4) +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  labs(title="LGOCV trained on ENF",
+       x="Vegetation Type", 
+       y = expression(paste("Bias (gC m"^-2, "d"^-1, ")"))
+       )+ 
+  theme(plot.title = element_text(face="bold")) + 
+  theme_classic()
+
+
+plot_grid( gg1, 
+           gg2, 
+           gg3  ,
+           gg4,
+           align='v', 
+           labels = c('a', 'b', 'c', 'd'), 
+           nrow=2, ncol=2
+           )
+ggsave("fig/lgocv_vegtype.pdf", width = 9, height = 6)
+```
+
+
+## LGOCV: Continent
+
+```{r}
+# train_eu <- read_csv("data/train_eu.csv")
+# train_us <- read_csv("data/train_us.csv")
+
+gg1 <- ggplot(train_eu, aes(x=group, y=bias)) +
+  geom_violin(draw_quantiles =0.5) + 
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  ylim(-6,6) +
+  labs(title="LGOCV trained on EU",
+       x="Continent", 
+       y = expression(paste("Bias (gC m"^-2, "d"^-1, ")"))
+       )+ 
+  theme(plot.title = element_text(face="bold")) + 
+  theme_classic()
+
+gg2 <- ggplot(train_us, aes(x=group, y=bias)) +
+  geom_violin(draw_quantiles =0.5) + 
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  ylim(-6,6) +
+  labs(title="LGOCV trained on US",
+       x="Continent",
+       y = expression(paste("Bias (gC m"^-2, "d"^-1, ")"))
+       )+ 
+  theme(plot.title = element_text(face="bold")) + 
+  theme_classic()
+
+plot_grid(gg1, 
+          gg2, 
+          labels =c("a","b"),  
+          align = "v",
+          nrow=1
+          )
+ggsave("fig/lgocv_continent.pdf", width = 9, height = 3)
+```
+
+## Extreme conditions
+
+```{r}
+df_extremes <- read_csv("data/dnn_extreme_condition.csv") %>% 
+  dplyr::select(-1) %>% 
+  mutate(model = "DNN") %>% 
+  bind_rows(
+    read_csv("data/lstm_extreme_condition.csv") %>% 
+      dplyr::select(-1) %>% 
+      mutate(model = "LSTM")
+  )
+  
+# dnn_extreme_condition$Model = "DNN"
+# lstm_extreme_condition$Model = "LSTM"
+# rf_extreme_condition_2$Model = "RF"
+# 
+# df <- rbind(dnn_extreme_condition, rf_extreme_condition_2)
+# df <- rbind(df, lstm_extreme_condition)
+
+gg1 <- ggplot(df_extremes, aes(x=model, y=lower_quantile)) +
+  geom_violin(draw_quantiles =0.5) +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  theme_classic() + 
+  ylim(-7,4) + 
+  labs(title="Negative anomalies",
+       x="Model", 
+       y = expression(paste("Bias (gC m"^-2, "d"^-1, ")"))
+       )
+
+
+gg2 <- ggplot(df_extremes, aes(x=model, y=normal)) +
+  geom_violin(draw_quantiles =0.5) +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  theme_classic() + 
+  ylim(-7,4) + 
+  labs(title="Normal ",
+       x="Model", 
+       y = expression(paste("Bias (gC m"^-2, "d"^-1, ")"))
+       )
+
+
+gg3 <- ggplot(df_extremes, aes(x=model, y=upper_quantile)) +
+  geom_violin(draw_quantiles =0.5) +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  theme_classic() + 
+  ylim(-7,4) + 
+  labs(title="Positive anomalies",
+       x="Model", 
+       y = expression(paste("Bias (gC m"^-2, "d"^-1, ")"))
+       )
+
+plot_grid( 
+  gg1,
+  gg2,
+  gg3, 
+  align='v', 
+  labels = c('a', 'b', 'c'), 
+  nrow=1
+  )
+```
+
+
+### Dry
+
+Do this only within climate zones where a dryness-related bias is evident.
+
+```{r}
+## Bin data along deficit and make regression with upper 90% quantile
+nbin <- 10
+df2 <- df %>%
+  ungroup() %>% 
+  # mutate(bias_lstm = LSTM_de - GPP_NT_VUT_REF,
+  #        bias_dnn = DNN_de - GPP_NT_VUT_REF,
+  #        bias_null = gpp_null - GPP_NT_VUT_REF) %>% 
+  mutate(bias_lstm = abs(LSTM_de - GPP_NT_VUT_REF),
+         bias_dnn = abs(DNN_de - GPP_NT_VUT_REF),
+         bias_null = abs(gpp_null - GPP_NT_VUT_REF)) %>% 
+  mutate(bin = cut(wscal, breaks = nbin)) %>% 
+  mutate(wscal_lower = as.numeric( sub("\\((.+),.*", "\\1", bin)),
+         wscal_upper = as.numeric( sub("[^,]*,([^]]*)\\]", "\\1", bin) )
+         ) %>% 
+  mutate(wscal_mid = (wscal_lower + wscal_upper)/2) %>% 
+  mutate(wscal_mid = as.factor(wscal_mid)) %>% 
+  dplyr::select(-bin, -wscal_lower, -wscal_upper)
+  
+df2 %>% 
+  ggplot(aes(wscal_mid, bias_lstm)) +
+  geom_violin()
+```
+
+### Cold stress
+
+Do this only for climate zones where a (early season) temperature-related bias is evident.
+Consider min temp of the preceding month.
+
+
+<!-- ## Comparison to physical model -->
 
 <!-- Load out-of-bag (OOB) cross validation results from Stocker et al. (2020) (file `df_metrics_oob_stocker20gmd_fig2.csv`), and from the LSTM. -->
 <!-- ```{r cars} -->

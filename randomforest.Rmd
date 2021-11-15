@@ -1,0 +1,110 @@
+---
+title: "Random forest"
+author: "Beni Stocker"
+date: "5/22/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(patchwork)
+library(ggrepel)
+library(yardstick)
+library(rbeni)    # get it by devtools::install_github("https://github.com/stineb/rbeni.git")
+library(ingestr)  # get it by devtools::install_github("https://github.com/computationales/ingestr.git")
+library(ranger)
+library(recipes)
+library(caret)
+```
+
+## 
+
+### Read in
+
+```{r}
+df <- read_csv("data/ddf_combined_mlflx_20210510.csv")
+```
+Specify model
+```{r}
+trgt <- "GPP_NT_VUT_REF"
+
+## predictors excluding PHO, and TS (too many missing)
+preds <- c("TA_F", "TA_F_DAY", "TA_F_NIGHT", "SW_IN_F", "LW_IN_F", "VPD_F", "PA_F", "P_F", "WS_F", "wscal", "fpar", "elv", "classid", "c4", "whc", "igbp_land_use")
+
+df <- df %>% 
+  dplyr::select(sitename, date, GPP_NT_VUT_REF, preds) %>% 
+  drop_na()
+```
+
+## Train a model
+
+### Caret Random Forest
+
+Using the caret library with hyperparameter based on best results from above. This is useful to get CV results.
+Slightly better results without imputation, instead of dropping data.
+```{r}
+## create generic formula for the model and define preprocessing steps
+pp <- recipe(GPP_NT_VUT_REF ~ ., data = dplyr::select(df, GPP_NT_VUT_REF, preds))
+  
+  ## impute by median as part of the recipe
+  # step_medianimpute(all_predictors())
+  # step_impute_median(all_predictors())
+  
+n_sites <- df %>% pull(sitename) %>% unique() %>% length()
+group_folds <- caret::groupKFold( df$sitename, k = n_sites )
+traincotrlParams <- caret::trainControl( index = group_folds, 
+                                         method = "cv",
+                                         number = n_sites,
+                                         savePredictions = "final"
+                                         )
+
+tune_grid <- expand.grid( .mtry = 5, 
+                          .min.node.size = 100,
+                          # .min.node.size = c(100, 1000, 5000),
+                          .splitrule = "variance"
+                          )
+
+set.seed(1982)
+
+mod <- train(
+  pp,
+  data            = dplyr::select(df, GPP_NT_VUT_REF, preds) %>% drop_na(),
+  metric          = "RMSE",
+  method          = "ranger",
+  tuneGrid        = tune_grid,
+  trControl       = traincotrlParams,
+  replace         = TRUE,
+  sample.fraction = 0.5,
+  num.trees       = 2000,        # boosted for the final model
+  importance      = "impurity"   # for variable importance analysis, alternative: "permutation"
+  )
+
+mod
+```
+
+Visualise cross-validation results using results from the best tuned model.
+```{r}
+## get predicted values from cross-validation resamples, take mean across repetitions
+df_lsocv_rf <- mod$pred %>% 
+  as_tibble() %>% 
+  dplyr::filter(mtry == mod$bestTune$mtry, 
+                splitrule == mod$bestTune$splitrule, 
+                min.node.size == mod$bestTune$min.node.size) %>%
+  separate(Resample, into = c(NA, "Fold"), sep = "old") %>% 
+  dplyr::rename(idx = rowIndex)
+  # left_join(
+  #   dfs %>%
+  #     ungroup() %>%
+  #     drop_na() %>%
+  #     dplyr::select(leafN) %>%
+  #     mutate(idx = seq(nrow(.))),
+  #   by = "idx"
+  #   ) %>%
+  # dplyr::select(obs = leafN, mod = pred)
+
+out <- df_lsocv_rf %>% 
+  rbeni::analyse_modobs2("pred", "obs", type = "heat")
+out$gg +
+  ylim(5,40) + xlim(5,40)
+```
+
