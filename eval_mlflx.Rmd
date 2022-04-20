@@ -19,39 +19,56 @@ library(cowplot)
 
 ### Read in
 
-Obtain outputs with this [link on Notion](https://www.notion.so/computationales/Results-2a637978b16346f98ac8c8c018ee7549#68803d0d60ca4b35b331be78c695a97c).
+Obtain outputs
+
 ```{r}
-df <- read_csv("data/df_pred_denormalised.csv")  # obtained from Notion -> mlflx DSLab -> Results -> 
+df <- read_csv("data/LSTM_nocondition_results_apr22.csv")
 usesites <- df$sitename %>% unique()
 
+df <- read_csv("data/DNN_nocondition_results_apr22.csv") %>% 
+  select(-GPP_NT_VUT_REF) %>% 
+  right_join(df, by = c("sitename", "date")) %>% 
+  rename(dnn_cond0 = dnn)
+
+df %>% analyse_modobs2("lstm_cond0", "dnn_cond0", type = "hex")
+```
+
+<!-- OLD: -->
+<!-- Obtain outputs with this [link on Notion](https://www.notion.so/computationales/Results-2a637978b16346f98ac8c8c018ee7549#68803d0d60ca4b35b331be78c695a97c). -->
+<!-- ```{r} -->
+<!-- df <- read_csv("data/df_pred_denormalised.csv")  # obtained from Notion -> mlflx DSLab -> Results -> -->
+<!-- usesites <- df$sitename %>% unique() -->
+<!-- ``` -->
+
+```{r}
 ## Add P-model results
-df <- df %>% 
+df <- df %>%
   left_join(
-    read_csv("data/out_lsocv.csv") %>% 
+    read_csv("data/out_lsocv.csv") %>%
       dplyr::select(sitename, date, pmodel = mod),
     by = c("sitename", "date"))
 
-## Add re-calculated RF results (see randomforest.Rmd)
-df_lsocv_rf <- read_rds("data/df_lsocv_rf.rds")
-df <- df %>% 
-  left_join(
-    df_lsocv_rf %>% 
-      dplyr::select(sitename, date, rf_pred = rf),
-    by = c("sitename", "date"))
+# ## Add re-calculated RF results (see randomforest.Rmd)
+# df_lsocv_rf <- read_rds("data/df_lsocv_rf.rds")
+# df <- df %>%
+#   left_join(
+#     df_lsocv_rf %>%
+#       dplyr::select(sitename, date, rf_pred = rf),
+#     by = c("sitename", "date"))
 
 
 # if (!exists("out_oob_FULL")){
 #   load("~/eval_pmodel/calib_results/out_oob_FULL.Rdata")
 # }
-# 
+#
 # ## for mlflx dslab course
 # df <- out_oob_FULL %>%
 #   purrr::map("gpp") %>%
 #   purrr::map("fluxnet2015") %>%
 #   purrr::map("data") %>%
 #   purrr::map("ddf") %>%
-#   bind_rows(.id = "sitename") %>% 
-#   select(sitename, date, pmodel = mod) %>% 
+#   bind_rows(.id = "sitename") %>%
+#   select(sitename, date, pmodel = mod) %>%
 #   right_join(df, by = c("sitename", "date"))
 ```
 
@@ -64,21 +81,21 @@ df %>%
   mutate(frac_missing = purrr::map_dbl(data, ~{1-(nrow(drop_na(., pmodel))) / nrow(.)}))
 ```
 
-Get null model (gpp_null = c * fpar * SW_IN_F). This yields a constant c = 0.04381 (globally and temporally constant light use efficiency). Add gpp_null to df. 
-```{r}
-df_train <- read_csv("data/ddf_combined_mlflx_20210510.csv") %>% 
-  mutate(apar = fpar * SW_IN_F)
-# df_train <- read_csv("data/ddf_combined_mlflx_20210510.csv")
+<!-- Get null model (gpp_null = c * fpar * SW_IN_F). This yields a constant c = 0.04381 (globally and temporally constant light use efficiency). Add gpp_null to df.  -->
+<!-- ```{r} -->
+<!-- df_train <- read_csv("data/ddf_combined_mlflx_20210510.csv") %>%  -->
+<!--   mutate(apar = fpar * SW_IN_F) -->
+<!-- # df_train <- read_csv("data/ddf_combined_mlflx_20210510.csv") -->
 
-linmod <- lm(GPP_NT_VUT_REF ~ 0 + apar, data = df_train)
+<!-- linmod <- lm(GPP_NT_VUT_REF ~ 0 + apar, data = df_train) -->
 
-df <- df %>% 
-  left_join(
-    df_train %>% 
-      dplyr::select(-GPP_NT_VUT_REF),
-    by = c("sitename", "date")) %>% 
-  mutate(gpp_null = apar * linmod$coefficients[1])
-```
+<!-- df <- df %>%  -->
+<!--   left_join( -->
+<!--     df_train %>%  -->
+<!--       dplyr::select(-GPP_NT_VUT_REF), -->
+<!--     by = c("sitename", "date")) %>%  -->
+<!--   mutate(gpp_null = apar * linmod$coefficients[1]) -->
+<!-- ``` -->
 
 
 <!-- ```{r} -->
@@ -98,7 +115,7 @@ df_lsocv_metrics <- df %>%
   ## LSTM
   group_by(sitename) %>% 
   nest() %>% 
-  mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, LSTM_de, na_rm = TRUE))) %>% 
+  mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, lstm_cond0, na_rm = TRUE))) %>% 
   mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
   dplyr::select(sitename, rsq_lstm = rsq) %>% 
   
@@ -107,22 +124,22 @@ df_lsocv_metrics <- df %>%
     df %>% 
       group_by(sitename) %>% 
       nest() %>% 
-      mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, DNN_de, na_rm = TRUE))) %>% 
+      mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, dnn_cond0, na_rm = TRUE))) %>% 
       mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
       dplyr::select(sitename, rsq_dnn = rsq),
     by = "sitename"
   ) %>% 
   
-  ## RF
-  left_join(
-    df %>% 
-      group_by(sitename) %>% 
-      nest() %>% 
-      mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, rf_pred, na_rm = TRUE))) %>% 
-      mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
-      dplyr::select(sitename, rsq_rf = rsq),
-    by = "sitename"
-  ) %>% 
+  # ## RF
+  # left_join(
+  #   df %>% 
+  #     group_by(sitename) %>% 
+  #     nest() %>% 
+  #     mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, rf_pred, na_rm = TRUE))) %>% 
+  #     mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
+  #     dplyr::select(sitename, rsq_rf = rsq),
+  #   by = "sitename"
+  # ) %>% 
 
   ## P-MODEL
   left_join(
@@ -133,25 +150,25 @@ df_lsocv_metrics <- df %>%
       mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
       dplyr::select(sitename, rsq_pmodel = rsq),
     by = "sitename"
-  ) %>% 
-  
-  ## NULL MODEL
-  left_join(
-    df %>% 
-      group_by(sitename) %>% 
-      nest() %>% 
-      mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, gpp_null, na_rm = TRUE))) %>% 
-      mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
-      dplyr::select(sitename, rsq_null = rsq),
-    by = "sitename"
   )
+  
+  # ## NULL MODEL
+  # left_join(
+  #   df %>% 
+  #     group_by(sitename) %>% 
+  #     nest() %>% 
+  #     mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, gpp_null, na_rm = TRUE))) %>% 
+  #     mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
+  #     dplyr::select(sitename, rsq_null = rsq),
+  #   by = "sitename"
+  # )
 
 
 # LSTM
 df %>% 
   group_by(sitename) %>% 
   nest() %>% 
-  mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, LSTM_de, na_rm = TRUE))) %>% 
+  mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, lstm_cond0, na_rm = TRUE))) %>% 
   mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
   pull(rsq) %>% 
   mean()
@@ -160,19 +177,19 @@ df %>%
 df %>% 
   group_by(sitename) %>% 
   nest() %>% 
-  mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, DNN_de, na_rm = TRUE))) %>% 
+  mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, dnn_cond0, na_rm = TRUE))) %>% 
   mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
   pull(rsq) %>% 
   mean()
 
-# RF
-df %>% 
-  group_by(sitename) %>% 
-  nest() %>% 
-  mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, rf_pred, na_rm = TRUE))) %>% 
-  mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
-  pull(rsq) %>% 
-  mean(na.rm = TRUE)
+# # RF
+# df %>% 
+#   group_by(sitename) %>% 
+#   nest() %>% 
+#   mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, rf_pred, na_rm = TRUE))) %>% 
+#   mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
+#   pull(rsq) %>% 
+#   mean(na.rm = TRUE)
 
 # P-model
 df %>% 
@@ -183,53 +200,53 @@ df %>%
   pull(rsq) %>% 
   mean(na.rm = TRUE)
 
-# NULL
-df %>% 
-  group_by(sitename) %>% 
-  nest() %>% 
-  mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, gpp_null, na_rm = TRUE))) %>% 
-  mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
-  pull(rsq) %>% 
-  mean()
+# # NULL
+# df %>% 
+#   group_by(sitename) %>% 
+#   nest() %>% 
+#   mutate(out = purrr::map(data, ~rsq(., GPP_NT_VUT_REF, gpp_null, na_rm = TRUE))) %>% 
+#   mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
+#   pull(rsq) %>% 
+#   mean()
 ```
 
 Benchmark plots
 ```{r}
 ## lstm
 gg1 <- df_lsocv_metrics %>% 
-  ggplot(aes(rsq_null, rsq_lstm, label = sitename)) +
+  ggplot(aes(rsq_pmodel, rsq_lstm, label = sitename)) +
   geom_point(color = "red") +
   xlim(0,1) + ylim(0,1) +
   geom_abline(yintercept = 0, slope = 1, linetype = "dotted") +
   theme_classic() +
-  labs(x = bquote( "NULL model" ~ italic(R)^2),
+  labs(x = bquote( "P-model" ~ italic(R)^2),
        y = bquote( "LSTM" ~ italic(R)^2),
        title = "LSTM") +
   geom_text_repel(min.segment.length = 0, seed = 42, box.padding = 0.5)
 
 ## dnn
 gg2 <- df_lsocv_metrics %>% 
-  ggplot(aes(rsq_null, rsq_dnn, label = sitename)) +
+  ggplot(aes(rsq_pmodel, rsq_dnn, label = sitename)) +
   geom_point(color = "red") +
   xlim(0,1) + ylim(0,1) +
   geom_abline(yintercept = 0, slope = 1, linetype = "dotted") +
   theme_classic() +
-  labs(x = bquote( "NULL model" ~ italic(R)^2),
+  labs(x = bquote( "P-model" ~ italic(R)^2),
        y = bquote( "DNN" ~ italic(R)^2),
        title = "DNN") +
   geom_text_repel(min.segment.length = 0, seed = 42, box.padding = 0.5)
 
-## rf
-gg3 <- df_lsocv_metrics %>% 
-  ggplot(aes(rsq_null, rsq_rf, label = sitename)) +
-  geom_point(color = "red") +
-  xlim(0,1) + ylim(0,1) +
-  geom_abline(yintercept = 0, slope = 1, linetype = "dotted") +
-  theme_classic() +
-  labs(x = bquote( "NULL model" ~ italic(R)^2),
-       y = bquote( "RF" ~ italic(R)^2),
-       title = "RF") +
-  geom_text_repel(min.segment.length = 0, seed = 42, box.padding = 0.5)
+# ## rf
+# gg3 <- df_lsocv_metrics %>% 
+#   ggplot(aes(rsq_null, rsq_rf, label = sitename)) +
+#   geom_point(color = "red") +
+#   xlim(0,1) + ylim(0,1) +
+#   geom_abline(yintercept = 0, slope = 1, linetype = "dotted") +
+#   theme_classic() +
+#   labs(x = bquote( "NULL model" ~ italic(R)^2),
+#        y = bquote( "RF" ~ italic(R)^2),
+#        title = "RF") +
+#   geom_text_repel(min.segment.length = 0, seed = 42, box.padding = 0.5)
 
 # ## for p-model
 # gg3 <- df_lsocv_metrics %>% 
@@ -249,28 +266,31 @@ ggsave("fig/lsocv_benchmarking.pdf", width = 10, height = 5)
 
 
 #### All data pooled
+
 ```{r}
 out_lstm <- df %>% 
-  analyse_modobs2("LSTM_de", "GPP_NT_VUT_REF", type = "hex", plot_legend = FALSE)
+  analyse_modobs2("lstm_cond0", "GPP_NT_VUT_REF", type = "hex", plot_legend = FALSE)
 out_dnn <- df %>% 
-  analyse_modobs2("DNN_de", "GPP_NT_VUT_REF", type = "hex", plot_legend = FALSE)
-# out_pmodel <- df %>% 
-#   analyse_modobs2("pmodel", "GPP_NT_VUT_REF", type = "hex", plot_legend = FALSE)
-out_rf <- df %>% 
-  analyse_modobs2("rf_pred", "GPP_NT_VUT_REF", type = "hex", plot_legend = FALSE)
-out_null <- df %>% 
-  analyse_modobs2("gpp_null", "GPP_NT_VUT_REF", type = "hex", plot_legend = FALSE)
+  analyse_modobs2("dnn_cond0", "GPP_NT_VUT_REF", type = "hex", plot_legend = FALSE)
+out_pmodel <- df %>%
+  analyse_modobs2("pmodel", "GPP_NT_VUT_REF", type = "hex", plot_legend = FALSE)
+# out_rf <- df %>% 
+#   analyse_modobs2("rf_pred", "GPP_NT_VUT_REF", type = "hex", plot_legend = FALSE)
+# out_null <- df %>% 
+#   analyse_modobs2("gpp_null", "GPP_NT_VUT_REF", type = "hex", plot_legend = FALSE)
 
 gg1 <- out_lstm$gg +
   labs(title = "LSTM")
 gg2 <- out_dnn$gg +
   labs(title = "DNN")
-gg3 <- out_rf$gg +
-  labs(title = "RF")
-gg4 <- out_null$gg +
-  labs(title = "NULL")
+gg3 <- out_pmodel$gg +
+  labs(title = "P-model")
+# gg3 <- out_rf$gg +
+#   labs(title = "RF")
+# gg4 <- out_null$gg +
+#   labs(title = "NULL")
 
-gg1 + gg2 + gg3 + gg4
+gg1 + gg2 + gg3 # + gg4
 ```
 
 ### Example time series
@@ -280,14 +300,14 @@ gg1 + gg2 + gg3 + gg4
 ```{r}
 df %>% 
   dplyr::filter(sitename == "AU-DaP" & lubridate::year(date) %in% c(2009)) %>% 
-  rename(lstm = LSTM_de, dnn = DNN_de, null = gpp_null, obs = GPP_NT_VUT_REF) %>% 
-  pivot_longer(c(obs, lstm, dnn, null),
+  rename(lstm = lstm_cond0, dnn = dnn_cond0, pmodel = pmodel, obs = GPP_NT_VUT_REF) %>% 
+  pivot_longer(c(obs, lstm, dnn, pmodel),
                names_to = "model", 
                values_to = "gpp") %>% 
   ggplot(aes(date, gpp, color = model)) +
   scale_color_manual(
-    values = c("dnn" = "royalblue", "lstm" = "red", "obs" = "black", "null" = "grey70"),
-    labels = c("DNN", "LSTM", "obs.", "NULL")
+    values = c("dnn" = "royalblue", "lstm" = "red", "obs" = "black", "pmodel" = "grey70"),
+    labels = c("DNN", "LSTM", "obs.", "P-model")
     ) +
   geom_line() +
   labs(y = expression( paste("GPP (g C m"^-2, " d"^-1, ")" ) ),
@@ -301,17 +321,15 @@ df %>%
 
 ```{r}
 df %>% 
-  dplyr::filter(sitename == "AU-Whr" 
-                # & lubridate::year(date) %in% c(2013)
-                ) %>% 
-  rename(lstm = LSTM_de, dnn = DNN_de, null = gpp_null, obs = GPP_NT_VUT_REF) %>% 
-  pivot_longer(c(obs, lstm, dnn, null),
+  dplyr::filter(sitename == "AU-Whr" & lubridate::year(date) %in% c(2013)) %>% 
+  rename(lstm = lstm_cond0, dnn = dnn_cond0, pmodel = pmodel, obs = GPP_NT_VUT_REF) %>% 
+  pivot_longer(c(obs, lstm, dnn, pmodel),
                names_to = "model", 
                values_to = "gpp") %>% 
   ggplot(aes(date, gpp, color = model)) +
   scale_color_manual(
-    values = c("dnn" = "royalblue", "lstm" = "red", "obs" = "black", "null" = "grey70"),
-    labels = c("DNN", "LSTM", "obs.", "NULL")
+    values = c("dnn" = "royalblue", "lstm" = "red", "obs" = "black", "pmodel" = "grey70"),
+    labels = c("DNN", "LSTM", "obs.", "P-model")
     ) +
   geom_line() +
   labs(y = expression( paste("GPP (g C m"^-2, " d"^-1, ")" ) ),
@@ -328,19 +346,19 @@ df %>%
   dplyr::filter(sitename == "AU-How" 
                 & lubridate::year(date) %in% 2005:2008
                 ) %>% 
-  rename(lstm = LSTM_de, dnn = DNN_de, null = gpp_null, obs = GPP_NT_VUT_REF) %>% 
-  pivot_longer(c(obs, lstm, dnn, null),
+  rename(lstm = lstm_cond0, dnn = dnn_cond0, pmodel = pmodel, obs = GPP_NT_VUT_REF) %>% 
+  pivot_longer(c(obs, lstm, dnn, pmodel),
                names_to = "model", 
                values_to = "gpp") %>% 
   ggplot(aes(date, gpp, color = model)) +
   scale_color_manual(
-    values = c("dnn" = "royalblue", "lstm" = "red", "obs" = "black", "null" = "grey70"),
-    labels = c("DNN", "LSTM", "obs.", "NULL")
+    values = c("dnn" = "royalblue", "lstm" = "red", "obs" = "black", "pmodel" = "grey70"),
+    labels = c("DNN", "LSTM", "obs.", "P-model")
     ) +
   geom_line() +
   labs(y = expression( paste("GPP (g C m"^-2, " d"^-1, ")" ) ),
        x = "Date",
-       title = "AU-How") +
+       title = "AU-Whr") +
   theme_classic() +
   geom_hline(yintercept = 0, linetype = "dotted")
 ```
@@ -352,12 +370,12 @@ df_season <- df %>%
   mutate(doy = lubridate::yday(date)) %>% 
   group_by(sitename, doy) %>% 
   summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), 
-            lstm = mean(LSTM_de, na.rm = TRUE), 
-            dnn = mean(DNN_de, na.rm = TRUE),
-            pmodel = mean(pmodel, na.rm = TRUE),
-            rf = mean(rf_pred, na.rm = TRUE),
-            null = mean(gpp_null, na.rm = TRUE),
-            wscal = mean(wscal, na.rm = TRUE)
+            lstm = mean(lstm_cond0, na.rm = TRUE), 
+            dnn = mean(dnn_cond0, na.rm = TRUE),
+            pmodel = mean(pmodel, na.rm = TRUE)
+            # rf = mean(rf_pred, na.rm = TRUE),
+            # null = mean(gpp_null, na.rm = TRUE),
+            # wscal = mean(wscal, na.rm = TRUE)
             )
 ```
 
@@ -371,19 +389,21 @@ Agreement of mean seasonal cycles.
 out_lstm <- df_season %>% rbeni::analyse_modobs2("lstm", "obs", type = "hex", plot_legend = FALSE)
 out_dnn <- df_season %>% rbeni::analyse_modobs2("dnn", "obs", type = "hex", plot_legend = FALSE)
 out_pmodel <- df_season %>% rbeni::analyse_modobs2("pmodel", "obs", type = "hex", plot_legend = FALSE)
-out_rf <- df_season %>% rbeni::analyse_modobs2("rf", "obs", type = "hex", plot_legend = FALSE)
-out_null <- df_season %>% rbeni::analyse_modobs2("null", "obs", type = "hex", plot_legend = FALSE)
+# out_rf <- df_season %>% rbeni::analyse_modobs2("rf", "obs", type = "hex", plot_legend = FALSE)
+# out_null <- df_season %>% rbeni::analyse_modobs2("null", "obs", type = "hex", plot_legend = FALSE)
 
 gg1 <- out_lstm$gg +
   labs(title = "LSTM")
 gg2 <- out_dnn$gg +
   labs(title = "DNN")
-gg3 <- out_rf$gg +
-  labs(title = "RF")
-gg4 <- out_null$gg +
-  labs(title = "NULL")
+gg3 <- out_pmodel$gg +
+  labs(title = "P-model")
+# gg3 <- out_rf$gg +
+#   labs(title = "RF")
+# gg4 <- out_null$gg +
+#   labs(title = "NULL")
 
-gg1 + gg2 + gg3 + gg4
+gg1 + gg2 + gg3  # + gg4
 
 ggsave("fig/modobs_seasonal.pdf", width = 9, height = 4)
 ```
@@ -393,9 +413,9 @@ Nash-Sutcliffe Efficiency (for comparison to Besnard et al., 2019: they had 0.66
 ```{r}
 hydroGOF::NSE(df_season$lstm, df_season$obs, na.rm = TRUE)
 hydroGOF::NSE(df_season$dnn, df_season$obs, na.rm = TRUE)
-hydroGOF::NSE(df_season$rf, df_season$obs, na.rm = TRUE)
-# hydroGOF::NSE(df_season$pmodel, df_season$obs, na.rm = TRUE)
-hydroGOF::NSE(df_season$null, df_season$obs, na.rm = TRUE)
+# hydroGOF::NSE(df_season$rf, df_season$obs, na.rm = TRUE)
+hydroGOF::NSE(df_season$pmodel, df_season$obs, na.rm = TRUE)
+# hydroGOF::NSE(df_season$null, df_season$obs, na.rm = TRUE)
 ```
 
 Evaluation as means across predictions from the LSOCV.
@@ -418,48 +438,48 @@ df_season %>%
   pull(rsq) %>% 
   mean()
 
-# RF
-df_season %>% 
-  group_by(sitename) %>% 
-  nest() %>% 
-  mutate(out = purrr::map(data, ~rsq(., obs, rf, na_rm = TRUE))) %>% 
-  mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
-  pull(rsq) %>% 
-  mean(na.rm = TRUE)
-
-# # P-model
+# # RF
 # df_season %>% 
 #   group_by(sitename) %>% 
 #   nest() %>% 
-#   mutate(out = purrr::map(data, ~rsq(., obs, pmodel, na_rm = TRUE))) %>% 
+#   mutate(out = purrr::map(data, ~rsq(., obs, rf, na_rm = TRUE))) %>% 
 #   mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
 #   pull(rsq) %>% 
 #   mean(na.rm = TRUE)
 
-# NULL
-df_season %>% 
-  group_by(sitename) %>% 
-  nest() %>% 
-  mutate(out = purrr::map(data, ~rsq(., obs, null, na_rm = TRUE))) %>% 
-  mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
-  pull(rsq) %>% 
-  mean()
+# P-model
+df_season %>%
+  group_by(sitename) %>%
+  nest() %>%
+  mutate(out = purrr::map(data, ~rsq(., obs, pmodel, na_rm = TRUE))) %>%
+  mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>%
+  pull(rsq) %>%
+  mean(na.rm = TRUE)
+
+# # NULL
+# df_season %>% 
+#   group_by(sitename) %>% 
+#   nest() %>% 
+#   mutate(out = purrr::map(data, ~rsq(., obs, null, na_rm = TRUE))) %>% 
+#   mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
+#   pull(rsq) %>% 
+#   mean()
 ```
 
 #### By climate zone
 
 ```{r}
 df_season_kgclimate <- df %>% 
-  # left_join(
-  #   siteinfo_fluxnet2015,
-  #   by = "sitename"
-  # ) %>% 
+  left_join(
+    siteinfo_fluxnet2015,
+    by = "sitename"
+  ) %>%
   mutate(doy = lubridate::yday(date),
          northsouth = ifelse(lat>0, "North", "South")) %>% 
   dplyr::filter(koeppen_code != "-") %>%
   mutate(kg_code_northsouth = paste(koeppen_code, northsouth)) %>% 
   group_by(kg_code_northsouth, doy) %>% 
-  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), lstm = mean(LSTM_de, na.rm = TRUE), dnn = mean(DNN_de, na.rm = TRUE))
+  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), lstm = mean(lstm_cond0, na.rm = TRUE), dnn = mean(dnn_cond0, na.rm = TRUE))
 ```
 
 Seasonal course by climate zone: LSTM works much better.
@@ -586,11 +606,11 @@ df_anom <- df %>%
   left_join(df_season,
             by = c("sitename", "doy")) %>% 
   mutate(obs_anom = GPP_NT_VUT_REF - obs,
-         lstm_anom = LSTM_de - lstm,
-         dnn_anom = DNN_de - dnn,
-         rf_anom = rf_pred - rf,
-         pmodel_anom = P_MODEL - pmodel,
-         null_anom = gpp_null - null
+         lstm_anom = lstm_cond0 - lstm,
+         dnn_anom = dnn_cond0 - dnn,
+         # rf_anom = rf_pred - rf,
+         pmodel_anom = P_MODEL - pmodel
+         # null_anom = gpp_null - null
          )
 
 out_lstm <- df_anom %>% 
@@ -602,29 +622,31 @@ out_dnn  <- df_anom %>%
 out_pmodel  <- df_anom %>% 
   dplyr::select(mod = pmodel_anom, obs = obs_anom) %>% 
   analyse_modobs2("mod", "obs", type = "hex", plot_legend = FALSE)
-out_rf  <- df_anom %>% 
-  dplyr::select(mod = rf_anom, obs = obs_anom) %>% 
-  analyse_modobs2("mod", "obs", type = "hex", plot_legend = FALSE)
-out_null  <- df_anom %>% 
-  dplyr::select(mod = null_anom, obs = obs_anom) %>% 
-  analyse_modobs2("mod", "obs", type = "hex", plot_legend = FALSE)
+# out_rf  <- df_anom %>% 
+#   dplyr::select(mod = rf_anom, obs = obs_anom) %>% 
+#   analyse_modobs2("mod", "obs", type = "hex", plot_legend = FALSE)
+# out_null  <- df_anom %>% 
+#   dplyr::select(mod = null_anom, obs = obs_anom) %>% 
+#   analyse_modobs2("mod", "obs", type = "hex", plot_legend = FALSE)
 
 gg1 <- out_lstm$gg +
   labs(title = "LSTM")
 gg2 <- out_dnn$gg +
   labs(title = "DNN")
-gg3 <- out_rf$gg +
-  labs(title = "RF")
-gg4 <- out_null$gg +
-  labs(title = "NULL")
+gg3 <- out_pmodel$gg +
+  labs(title = "P-model")
+# gg3 <- out_rf$gg +
+#   labs(title = "RF")
+# gg4 <- out_null$gg +
+#   labs(title = "NULL")
 
-gg1 + gg2 + gg3 + gg4
+gg1 + gg2 + gg3  # + gg4
 
 hydroGOF::NSE(df_anom$lstm_anom, df_anom$obs_anom, na.rm = TRUE)
 hydroGOF::NSE(df_anom$dnn_anom,  df_anom$obs_anom, na.rm = TRUE)
-hydroGOF::NSE(df_anom$rf_anom,  df_anom$obs_anom, na.rm = TRUE)
-# hydroGOF::NSE(df_anom$pmodel_anom,  df_anom$obs_anom, na.rm = TRUE)
-hydroGOF::NSE(df_anom$null_anom, df_anom$obs_anom, na.rm = TRUE)
+# hydroGOF::NSE(df_anom$rf_anom,  df_anom$obs_anom, na.rm = TRUE)
+hydroGOF::NSE(df_anom$pmodel_anom,  df_anom$obs_anom, na.rm = TRUE)
+# hydroGOF::NSE(df_anom$null_anom, df_anom$obs_anom, na.rm = TRUE)
 ```
 
 
@@ -648,32 +670,32 @@ df_anom %>%
   pull(rsq) %>% 
   mean()
 
-# # P-model
+# P-model
+df_anom %>%
+  group_by(sitename) %>%
+  nest() %>%
+  mutate(out = purrr::map(data, ~rsq(., obs_anom, pmodel_anom, na_rm = TRUE))) %>%
+  mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>%
+  pull(rsq) %>%
+  mean(na.rm = TRUE)
+
+# # RF
 # df_anom %>% 
 #   group_by(sitename) %>% 
 #   nest() %>% 
-#   mutate(out = purrr::map(data, ~rsq(., obs_anom, pmodel_anom, na_rm = TRUE))) %>% 
+#   mutate(out = purrr::map(data, ~rsq(., obs_anom, rf_anom, na_rm = TRUE))) %>% 
 #   mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
 #   pull(rsq) %>% 
 #   mean(na.rm = TRUE)
-
-# RF
-df_anom %>% 
-  group_by(sitename) %>% 
-  nest() %>% 
-  mutate(out = purrr::map(data, ~rsq(., obs_anom, rf_anom, na_rm = TRUE))) %>% 
-  mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
-  pull(rsq) %>% 
-  mean(na.rm = TRUE)
-
-# NULL
-df_anom %>% 
-  group_by(sitename) %>% 
-  nest() %>% 
-  mutate(out = purrr::map(data, ~rsq(., obs_anom, null_anom, na_rm = TRUE))) %>% 
-  mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
-  pull(rsq) %>% 
-  mean()
+# 
+# # NULL
+# df_anom %>% 
+#   group_by(sitename) %>% 
+#   nest() %>% 
+#   mutate(out = purrr::map(data, ~rsq(., obs_anom, null_anom, na_rm = TRUE))) %>% 
+#   mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
+#   pull(rsq) %>% 
+#   mean()
 ```
 
 <!-- ```{r} -->
@@ -716,11 +738,12 @@ df_site <- df %>%
   mutate(doy = lubridate::yday(date)) %>% 
   group_by(sitename) %>% 
   summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), 
-            lstm = mean(LSTM_de, na.rm = TRUE), 
-            dnn = mean(DNN_de, na.rm = TRUE),
-            rf = mean(rf_pred, na.rm = TRUE),
-            pmodel = mean(pmodel, na.rm = TRUE),
-            null = mean(gpp_null, na.rm = TRUE))
+            lstm = mean(lstm_cond0, na.rm = TRUE), 
+            dnn = mean(dnn_cond0, na.rm = TRUE),
+            # rf = mean(rf_pred, na.rm = TRUE),
+            pmodel = mean(pmodel, na.rm = TRUE)
+            # null = mean(gpp_null, na.rm = TRUE)
+            )
 ```
 
 <!-- No missing data -->
@@ -734,32 +757,34 @@ out_lstm <- df_site %>%
   rbeni::analyse_modobs2("lstm", "obs")
 out_dnn <- df_site %>% 
   rbeni::analyse_modobs2("dnn", "obs")
-out_rf <- df_site %>% 
-  rbeni::analyse_modobs2("rf", "obs")
+# out_rf <- df_site %>% 
+#   rbeni::analyse_modobs2("rf", "obs")
 out_pmodel <- df_site %>% 
   rbeni::analyse_modobs2("pmodel", "obs")
-out_null <- df_site %>% 
-  rbeni::analyse_modobs2("null", "obs")
+# out_null <- df_site %>% 
+#   rbeni::analyse_modobs2("null", "obs")
 
 gg1 <- out_lstm$gg +
   labs(title = "LSTM")
 gg2 <- out_dnn$gg +
   labs(title = "DNN")
-gg3 <- out_rf$gg +
-  labs(title = "RF")
-gg4 <- out_null$gg +
-  labs(title = "NULL")
+gg3 <- out_pmodel$gg +
+  labs(title = "P-model")
+# gg3 <- out_rf$gg +
+#   labs(title = "RF")
+# gg4 <- out_null$gg +
+#   labs(title = "NULL")
 
-gg1 + gg2 + gg3 + gg4
+gg1 + gg2 + gg3  #  + gg4
 ```
 
 Nash-Sutcliffe Efficiency (for comparison to Besnard et al., 2019: they had 0.42)
 ```{r}
 hydroGOF::NSE(df_site$lstm, df_site$obs, na.rm = TRUE)
 hydroGOF::NSE(df_site$dnn, df_site$obs, na.rm = TRUE)
-hydroGOF::NSE(df_site$rf, df_site$obs, na.rm = TRUE)
-# hydroGOF::NSE(df_site$pmodel, df_site$obs, na.rm = TRUE)
-hydroGOF::NSE(df_site$null, df_site$obs, na.rm = TRUE)
+# hydroGOF::NSE(df_site$rf, df_site$obs, na.rm = TRUE)
+hydroGOF::NSE(df_site$pmodel, df_site$obs, na.rm = TRUE)
+# hydroGOF::NSE(df_site$null, df_site$obs, na.rm = TRUE)
 ```
 
 
@@ -775,21 +800,22 @@ df_ann <- df %>%
               rename(obs_meandoy = obs, 
                      lstm_meandoy = lstm, 
                      pmodel_meandoy = pmodel, 
-                     rf_meandoy = rf, 
-                     null_meandoy = null, 
+                     # rf_meandoy = rf, 
+                     # null_meandoy = null, 
                      dnn_meandoy = dnn
                      ), 
             by = c("sitename", "doy")) %>% 
-  mutate(GPP_NT_VUT_REF = ifelse(is.na(GPP_NT_VUT_REF), obs_meandoy, GPP_NT_VUT_REF),
-         rf_pred = ifelse(is.na(rf_pred), rf_meandoy, rf_pred)) %>% 
+  mutate(GPP_NT_VUT_REF = ifelse(is.na(GPP_NT_VUT_REF), obs_meandoy, GPP_NT_VUT_REF)
+         # rf_pred = ifelse(is.na(rf_pred), rf_meandoy, rf_pred)
+         ) %>% 
   mutate(year = lubridate::year(date)) %>% 
   group_by(sitename, year) %>% 
   summarise(obs = mean(GPP_NT_VUT_REF, na.rm = FALSE), 
-            lstm = mean(LSTM_de, na.rm = FALSE), 
-            rf = mean(rf_pred, na.rm = FALSE), 
+            lstm = mean(lstm_cond0, na.rm = FALSE), 
+            # rf = mean(rf_pred, na.rm = FALSE), 
             pmodel = mean(P_MODEL, na.rm = FALSE), 
-            null = mean(gpp_null, na.rm = FALSE), 
-            dnn = mean(DNN_de, na.rm = FALSE)
+            # null = mean(gpp_null, na.rm = FALSE), 
+            dnn = mean(dnn_cond0, na.rm = FALSE)
             )
 ```
 
@@ -806,15 +832,15 @@ df_ann <- df_ann %>%
               group_by(sitename) %>% 
               summarise(obs_mean = mean(obs, na.rm = TRUE), 
                         lstm_mean = mean(lstm, na.rm = TRUE), 
-                        null_mean = mean(null, na.rm = TRUE), 
-                        rf_mean = mean(rf, na.rm = TRUE), 
+                        # null_mean = mean(null, na.rm = TRUE), 
+                        # rf_mean = mean(rf, na.rm = TRUE), 
                         pmodel_mean = mean(pmodel, na.rm = TRUE), 
                         dnn_mean = mean(dnn, na.rm = TRUE)),
             by = c("sitename")) %>% 
   mutate(obs_anom = obs - obs_mean,
          lstm_anom = lstm - lstm_mean,
-         null_anom = null - null_mean,
-         rf_anom = rf - rf_mean,
+         # null_anom = null - null_mean,
+         # rf_anom = rf - rf_mean,
          pmodel_anom = pmodel - pmodel_mean,
          dnn_anom = dnn - dnn_mean)
 
@@ -824,26 +850,28 @@ out_lstm <- df_ann %>%
 out_dnn <- df_ann %>% 
   dplyr::select(mod = dnn_anom, obs = obs_anom) %>% 
   rbeni::analyse_modobs2("mod", "obs")
-out_rf <- df_ann %>% 
-  dplyr::select(mod = rf_anom, obs = obs_anom) %>% 
-  rbeni::analyse_modobs2("mod", "obs")
+# out_rf <- df_ann %>% 
+#   dplyr::select(mod = rf_anom, obs = obs_anom) %>% 
+#   rbeni::analyse_modobs2("mod", "obs")
 out_pmodel <- df_ann %>% 
   dplyr::select(mod = pmodel_anom, obs = obs_anom) %>% 
   rbeni::analyse_modobs2("mod", "obs")
-out_null <- df_ann %>% 
-  dplyr::select(mod = null_anom, obs = obs_anom) %>% 
-  rbeni::analyse_modobs2("mod", "obs")
+# out_null <- df_ann %>% 
+#   dplyr::select(mod = null_anom, obs = obs_anom) %>% 
+#   rbeni::analyse_modobs2("mod", "obs")
 
 gg1 <- out_lstm$gg +
   labs(title = "LSTM")
 gg2 <- out_dnn$gg +
   labs(title = "DNN")
-gg3 <- out_rf$gg +
-  labs(title = "RF")
-gg4 <- out_null$gg +
-  labs(title = "NULL")
+gg3 <- out_pmodel$gg +
+  labs(title = "P-model")
+# gg3 <- out_rf$gg +
+#   labs(title = "RF")
+# gg4 <- out_null$gg +
+#   labs(title = "NULL")
 
-gg1 + gg2 + gg3 + gg4
+gg1 + gg2 + gg3 # + gg4
 ```
 
 Besnard et al; 0.07
@@ -851,7 +879,7 @@ Besnard et al; 0.07
 hydroGOF::NSE(df_ann$lstm_anom, df_ann$obs_anom, na.rm = TRUE)
 hydroGOF::NSE(df_ann$dnn_anom, df_ann$obs_anom, na.rm = TRUE)
 hydroGOF::NSE(df_ann$pmodel_anom, df_ann$obs_anom, na.rm = TRUE)
-hydroGOF::NSE(df_ann$null_anom, df_ann$obs_anom, na.rm = TRUE)
+# hydroGOF::NSE(df_ann$null_anom, df_ann$obs_anom, na.rm = TRUE)
 ```
 
 
@@ -875,32 +903,32 @@ df_ann %>%
   pull(rsq) %>% 
   mean(na.rm = TRUE)
 
-# # P-model
+# P-model
+df_ann %>%
+  group_by(sitename) %>%
+  nest() %>%
+  mutate(out = purrr::map(data, ~rsq(., obs_anom, pmodel_anom, na_rm = TRUE))) %>%
+  mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>%
+  pull(rsq) %>%
+  mean(na.rm = TRUE)
+
+# # RF
 # df_ann %>% 
 #   group_by(sitename) %>% 
 #   nest() %>% 
-#   mutate(out = purrr::map(data, ~rsq(., obs_anom, pmodel_anom, na_rm = TRUE))) %>% 
+#   mutate(out = purrr::map(data, ~rsq(., obs_anom, rf_anom, na_rm = TRUE))) %>% 
 #   mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
 #   pull(rsq) %>% 
 #   mean(na.rm = TRUE)
-
-# RF
-df_ann %>% 
-  group_by(sitename) %>% 
-  nest() %>% 
-  mutate(out = purrr::map(data, ~rsq(., obs_anom, rf_anom, na_rm = TRUE))) %>% 
-  mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
-  pull(rsq) %>% 
-  mean(na.rm = TRUE)
-
-# NULL
-df_ann %>% 
-  group_by(sitename) %>% 
-  nest() %>% 
-  mutate(out = purrr::map(data, ~rsq(., obs_anom, null_anom, na_rm = TRUE))) %>% 
-  mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
-  pull(rsq) %>% 
-  mean(na.rm = TRUE)
+# 
+# # NULL
+# df_ann %>% 
+#   group_by(sitename) %>% 
+#   nest() %>% 
+#   mutate(out = purrr::map(data, ~rsq(., obs_anom, null_anom, na_rm = TRUE))) %>% 
+#   mutate(rsq = purrr::map_dbl(out, ~pull(., .estimate))) %>% 
+#   pull(rsq) %>% 
+#   mean(na.rm = TRUE)
 ```
 
 ## LGOCV: Vegetation type
@@ -1076,8 +1104,8 @@ nbin <- 10
 df2 <- df %>%
   ungroup() %>% 
   dplyr::filter(koeppen_code == "Csa") %>%
-  mutate(bias_lstm = LSTM_de - GPP_NT_VUT_REF,
-         bias_dnn = DNN_de - GPP_NT_VUT_REF,
+  mutate(bias_lstm = lstm_cond0 - GPP_NT_VUT_REF,
+         bias_dnn = dnn_cond0 - GPP_NT_VUT_REF,
          bias_null = gpp_null - GPP_NT_VUT_REF) %>%
   mutate(bin = cut(wscal, breaks = seq(0.1, 0.9, by = 0.1))) %>% 
   mutate(wscal_lower = as.numeric( sub("\\((.+),.*", "\\1", bin)),
