@@ -1,0 +1,27 @@
+import pandas as pd
+    
+
+
+def normalize(df):
+    result = df.copy()
+    for feature_name in df.columns:
+        result[feature_name] = (df[feature_name] - df[feature_name].mean()) / df[feature_name].std()
+    return result
+
+
+def prepare_df(data, meta_columns=['classid','igbp_land_use']):
+    # Site Data
+    sites = data.index.unique()
+    meta_data = pd.get_dummies(data[meta_columns])
+    sensor_data = data.drop(columns=['plant_functional_type', 'classid', 'koeppen_code','igbp_land_use', 'GPP_NT_VUT_REF'])
+    
+    # Batch by site
+    df_sensor = [normalize(sensor_data[sensor_data.index == site]) for site in sites if sensor_data[sensor_data.index == site].size != 0 ]
+    df_meta = [meta_data[meta_data.index == site] for site in sites if meta_data[meta_data.index == site].size != 0]
+    df_gpp = [data[data.index == site]['GPP_NT_VUT_REF'] for site in sites if data[data.index == site].size != 0]   
+    df_gpp = [(df_gpp[i]-df_gpp[i].mean())/df_gpp[i].std() for i in range(len(df_gpp))]
+        
+
+    return df_sensor, df_meta, df_gpp
+
+

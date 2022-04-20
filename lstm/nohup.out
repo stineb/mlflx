@@ -1,0 +1,2 @@
+usage: cv.py [-h] [-gpu GPU] [-e N_EPOCHS] [-c CONDITIONAL]
+cv.py: error: argument -c/--conditional: expected one argument
