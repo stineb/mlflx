@@ -28,10 +28,10 @@ settings_modis <- get_settings_modis(
 
 df_modis_fpar <- ingest(
   df_sites_ddf %>% 
-    mutate(start_year = 2000, end_year = 2020) %>% 
+    mutate(year_start = 2000, year_end = 2020) %>% 
     slice(as.numeric(args[1])),
   source = "modis",
   settings = settings_modis, 
-  parallel = FALSE,
+  parallel = FALSE
   # ncores = 2
 )
