@@ -408,7 +408,6 @@ gg1 + gg2 + gg3  # + gg4
 ggsave("fig/modobs_seasonal.pdf", width = 9, height = 4)
 ```
 
-
 Nash-Sutcliffe Efficiency (for comparison to Besnard et al., 2019: they had 0.66)
 ```{r}
 hydroGOF::NSE(df_season$lstm, df_season$obs, na.rm = TRUE)
@@ -529,6 +528,19 @@ df_season %>%
   scale_color_manual(values = c("dnn" = "royalblue", "lstm" = "red", "obs" = "black")) +
   facet_wrap(~sitename)
 ```
+Special examples:
+```{r}
+siteinfo_fluxnet2015 %>% 
+  dplyr::filter(sitename %in% c("US-PFa", "US-UMd"))
+df_season %>% 
+  dplyr::filter(sitename %in% c("US-PFa", "US-UMd")) %>%
+  pivot_longer(c(obs, lstm, dnn), names_to = "source", values_to = "gpp") %>% 
+  ggplot(aes(doy, gpp, color = source)) +
+  geom_line() +
+  scale_color_manual(values = c("dnn" = "royalblue", "lstm" = "red", "obs" = "black")) +
+  facet_wrap(~sitename)
+```
+
 
 - Csa (temperate, dry summer, hot summer): underestimating peak GPP, not fast enough depression of GPP after peak season
 
@@ -543,6 +555,30 @@ df_season %>%
   facet_wrap(~sitename)
 ```
 
+Special examples:
+```{r}
+siteinfo_fluxnet2015 %>% 
+  dplyr::filter(sitename %in% c("FR-Pue", "US-Var"))
+df_season %>% 
+  dplyr::filter(sitename %in% c("FR-Pue", "US-Var")) %>%
+  pivot_longer(c(obs, lstm, dnn), names_to = "source", values_to = "gpp") %>% 
+  ggplot(aes(doy, gpp, color = source)) +
+  geom_line() +
+  scale_color_manual(values = c("dnn" = "royalblue", "lstm" = "red", "obs" = "black")) +
+  facet_wrap(~sitename)
+```
+
+#### By site
+
+```{r}
+df_season %>% 
+  pivot_longer(c(obs, lstm, dnn), names_to = "source", values_to = "gpp") %>% 
+  ggplot(aes(doy, gpp, color = source)) +
+  geom_line() +
+  scale_color_manual(values = c("dnn" = "royalblue", "lstm" = "red", "obs" = "black")) +
+  facet_wrap(~sitename, ncol = 4)
+ggsave("fig/meanseasonalcycle_by_site.pdf", width = 9, height = 20)
+```
 
 <!-- Create a table for identifying climate zones -->
 <!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=7.6, fig.height=7, echo=FALSE} -->
@@ -939,6 +975,20 @@ df_ann %>%
 # mf <- read_csv("data/MF.csv")
 # gra <- read_csv("data/GRA.csv")
 # enf <- read_csv("data/ENF.csv")
+
+## leave-DBF-out CV: Collect all data predicted by model trained on all but DBF data
+vegtype <- "DBF"
+list.files(path = paste0("data/leave_", vegtype, "_out"))
+
+sitenames <- siteinfo_fluxnet2015$sitename %>% unique()
+
+for (idx in seq(nrow(siteinfo_fluxnet2015))){
+  sitename <- siteinfo_fluxnet2015$sitename[idx]
+  vegtype  <- siteinfo_fluxnet2015$classid[idx]
+  
+}
+
+
 
 gg1 <- ggplot(dbf, aes(x=group, y=bias)) +
   geom_violin(draw_quantiles =0.5) + ylim(-4,4) +
