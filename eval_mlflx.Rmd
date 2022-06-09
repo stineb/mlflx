@@ -980,18 +980,120 @@ df_ann %>%
 # dbf <- read_csv("data/train_DBF.csv")
 # mf <- read_csv("data/df_trainMF.csv")
 
-## leave-DBF-out CV: Collect all data predicted by model trained on all but DBF data
-vegtype <- "DBF"
-list.files(path = paste0("data/leave_", vegtype, "_out"))
+## This is a misnomer: leave-DBF-out means that it was trained on DBF and tested on all other
+targetveg <- "DBF"
 
-sitenames <- siteinfo_fluxnet2015$sitename %>% unique()
+## a site in DBF
+targetsite <- "DE-Hai"
 
-for (idx in seq(nrow(siteinfo_fluxnet2015))){
-  sitename <- siteinfo_fluxnet2015$sitename[idx]
-  vegtype  <- siteinfo_fluxnet2015$classid[idx]
+## collect predictions of model trained on remaining DBF sites
+df <- read_delim(
+  paste0("data/leave_", targetveg, "_out/", targetsite, "_test_bias.csv"), 
+  delim = "\t", 
+  col_names = c("sitename", "date", "bias")
+  )
+
+## collect predictions of model trained on GRA, and predicting on DE-Hai. 
+## since DE-Hai is DBF, multiple models trained on GRA predicted DE-Hai, each one with a different GRA site held out from training.
+collect_otherveg_bysite_byveg <- function(otherveg, targetveg, targetsite){
+  
+  purrr::map_dfr(
+    as.list(list.files(path = paste0("data/leave_", otherveg, "_out"), pattern = targetveg)),
+    ~read_delim(
+      paste0("data/leave_", otherveg, "_out/", .), 
+      delim = "\t", 
+      col_names = c("sitename", "date", "bias")) %>% 
+      filter(sitename == targetsite)
+    ) %>% 
+    group_by(sitename, date) %>% 
+    summarise(bias = mean(bias, na.rm = TRUE)) %>% 
+    mutate(trainedonveg = otherveg, isveg = targetveg)
   
 }
 
+all_vegtypes <- c("DBF", "ENF", "GRA", "MF")
+df <- data.frame()
+
+for (targetveg in all_vegtypes){
+
+  ## get all sites of this veg type
+  all_sites <- list.files(path = paste0("data/leave_", targetveg, "_out")) %>% 
+    str_sub(start = 1, end = 6) %>% 
+    unique()
+  
+  for (targetsite in all_sites){
+    
+    ## collect predictions of model trained on remaining sites of the same veg type (targetveg)
+    df <- df %>% 
+      bind_rows(
+        read_delim(
+          paste0("data/leave_", targetveg, "_out/", targetsite, "_test_bias.csv"), 
+          delim = "\t", 
+          col_names = c("sitename", "date", "bias")
+          ) %>% 
+        mutate(trainedonveg = targetveg, isveg = targetveg)
+        )
+
+    ## Collect predictions of model trained on all other veg types, and predicting on target site.
+    ## Multiple models trained on each other veg predicted for this target site, each one with a different site held out from training.
+    ## Average across them.
+    for (otherveg in all_vegtypes[-which(all_vegtypes == targetveg)]){
+      
+      df <- df %>%
+        bind_rows( collect_otherveg_bysite_byveg(otherveg, targetveg, targetsite) )
+
+    }
+
+  }
+
+}
+
+df <- as_tibble(df)
+
+saveRDS(df, file = "data/bias_leave_vegtype_out_cv.csv")
+```
+
+
+```{r}
+## Bias on DBF sites
+df %>% 
+  filter(isveg == "DBF") %>% 
+  ggplot(aes(x = bias, y = ..density.., color = trainedonveg)) +
+  geom_density() + 
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  theme_classic() +
+  labs(title = "Bias on DBF sites")
+
+## Bias on GRA sites
+df %>% 
+  filter(isveg == "GRA") %>% 
+  ggplot(aes(x = bias, y = ..density.., color = trainedonveg)) +
+  geom_density() + 
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  theme_classic() +
+  labs(title = "Bias on GRA sites")
+
+## Bias on ENF sites
+df %>% 
+  filter(isveg == "ENF") %>% 
+  ggplot(aes(x = bias, y = ..density.., color = trainedonveg)) +
+  geom_density() + 
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  theme_classic() +
+  labs(title = "Bias on ENF sites")
+
+## Bias on MF sites
+df %>% 
+  filter(isveg == "MF") %>% 
+  ggplot(aes(x = bias, y = ..density.., color = trainedonveg)) +
+  geom_density() + 
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  theme_classic() +
+  labs(title = "Bias on MF sites")
+```
+
+
+```{r}
 gg1 <- ggplot(dbf, aes(x=group, y=bias)) +
   geom_violin(draw_quantiles =0.5) + ylim(-4,4) +
   labs(title="LGOCV trained on DBF",
