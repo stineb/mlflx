@@ -11,6 +11,7 @@ library(tidyverse)
 library(ingestr)  # https://github.com/stineb/ingestr
 library(rbeni)    # https://github.com/stineb/rbeni
 library(recipes)
+library(jcolors)
 ```
 
 
@@ -57,9 +58,7 @@ write_csv(df_sites, path = "./data/df_sites_mlflx.csv")
 
 Show sites on a map.
 ```{r}
-library(jcolors)
-plot_map_simpl() +
-  geom_point(data = df_sites, aes(x = lon, y = lat), color = "red")
+df_sites <- read_csv("./data/df_sites_mlflx.csv")
 
 plot_map_simpl() +
   geom_point(data = df_sites, aes(x = lon, y = lat, color = classid)) +
@@ -67,7 +66,7 @@ plot_map_simpl() +
   scale_color_brewer(palette = "Paired", name = "Vegetation type")
   # scale_colour_manual(values = myjcolors(length(unique(df_sites$classid))), name = "Vegetation type")
 
-ggsave("fig/map_sites_mlflx.pdf", width = 6, height = 3)
+ggsave("fig/map_sites_mlflx.pdf", width = 10, height = 5)
 ```
 
 ## FLUXNET data
@@ -776,6 +775,7 @@ df_modis_fpar <- ingest(
   source = "modis",
   settings = settings_modis, 
   parallel = FALSE
+  # ncores = 2
   )
 ```
 
