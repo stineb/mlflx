@@ -935,10 +935,14 @@ df_ann %>%
 
 ```{r}
 ## code from lvocv.R
+## old:
 # dbf <- read_csv("data/DBF.csv")
 # mf <- read_csv("data/MF.csv")
 # gra <- read_csv("data/GRA.csv")
 # enf <- read_csv("data/ENF.csv")
+
+dbf <- read_csv("data/train_DBF.csv")
+mf <- read_csv("data/df_trainMF.csv")
 
 gg1 <- ggplot(dbf, aes(x=group, y=bias)) +
   geom_violin(draw_quantiles =0.5) + ylim(-4,4) +
@@ -996,8 +1000,8 @@ ggsave("fig/lgocv_vegtype.pdf", width = 9, height = 6)
 ## LGOCV: Continent
 
 ```{r}
-# train_eu <- read_csv("data/train_eu.csv")
-# train_us <- read_csv("data/train_us.csv")
+train_eu <- read_csv("data/train_eu.csv")
+train_us <- read_csv("data/train_us.csv")
 
 gg1 <- ggplot(train_eu, aes(x=group, y=bias)) +
   geom_violin(draw_quantiles =0.5) + 
