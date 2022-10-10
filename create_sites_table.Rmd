@@ -1,0 +1,54 @@
+---
+title: "Sites table"
+author: "Beni"
+date: "11/12/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ingestr)  # get it from https://github.com/computationales/ingestr
+library(tidyverse)
+library(xtable)
+
+## site info is available from ingestr
+ingestr::siteinfo_fluxnet2015
+
+## subset to acutally used sites
+df <- read_csv("data/df_pred_denormalised.csv") %>% 
+  group_by(sitename) %>% 
+  summarise(n = n())
+  
+sites_used <- df %>% 
+  pull(sitename) %>% 
+  unique()
+
+caption_text <- "Sites used for evaluation. Lon. is longitude, negative values indicate west longitude; Lat. is latitude, positive values indicate north latitude; Veg. is vegetation type: deciduous broadleaf forest (DBF); evergreen broadleaf forest (EBF); evergreen needleleaf forest (ENF); grassland (GRA); mixed deciduous and evergreen needleleaf forest (MF); savanna ecosystem (SAV); shrub ecosystem (SHR); wetland (WET)."
+
+siteinfo <- siteinfo_fluxnet2015 %>% 
+  filter(sitename %in% sites_used) %>% 
+  
+  ## add number of observations per site
+  left_join(df, by = "sitename") %>% 
+  
+  ## add reference
+  # mutate( Reference = paste0("[@", sitename ,"]") ) %>%
+  mutate( Reference = paste0("\\cite{", sitename ,"}") ) %>%
+    
+  ## make readable and select variables to be included
+  mutate( Period = paste0(as.character(year_start), "-", as.character(year_end)) ) %>%
+  dplyr::select( -year_start, -year_end ) %>%
+  dplyr::select( Site=sitename, Lon.=lon, Lat.=lat, Elevation=elv, Veg.=classid, Clim.=koeppen_code, N = n )
+
+## create .tex file with table
+siteinfo %>% 
+    xtable::xtable( caption = caption_text, sanitize.text.function = function(x) {x}) %>%
+    print( hline.after=c(-1, 0), file = "./tab/table_siteinfo.tex" )
+
+## render nicely in html
+siteinfo %>% 
+  knitr::kable( caption = caption_text )
+```
