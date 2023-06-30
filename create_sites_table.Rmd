@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-library(ingestr)  # get it from https://github.com/computationales/ingestr
+library(ingestr)  # get it from https://github.com/geco-bern/ingestr
 library(tidyverse)
 library(xtable)
 
