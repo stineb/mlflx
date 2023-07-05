@@ -42,13 +42,55 @@ df |> analyse_modobs2("lstm_cond0", "dnn_cond0", type = "hex")
 <!-- usesites <- df$sitename |> unique() -->
 <!-- ``` -->
 
+Got P-model LSOCV results from `eval_pmodel/calib_results/oob_FULL/`. This includes the soil moisture stress function in model simulations. Read results here.
+```{r}
+filnam <- "data/df_lsocv_pmodel.rds"
+if (!file.exists(filnam)){
+  
+  sites <- unique(df$sitename)
+  
+  files <- list.files("data/oob_FULL", pattern = "out_eval_leftout")
+  
+  get_testresults_pmodel_bysite <- function(filename){
+    worked <- try(load(paste0("data/oob_FULL/", filename)))
+    if (class(worked) != "try-error" & !is.na(out_eval)){
+      print(paste("Reading ", filename))
+      out_eval$gpp$fluxnet2015$data$ddf |>
+          dplyr::select(sitename, date, pmodel = mod)
+    } else {
+      print(paste("Not reading ", filename))
+      NULL
+    }
+  }
+  
+  df_lsocv_pmodel <- purrr::map_dfr(
+    as.list(files),
+    ~get_testresults_pmodel_bysite(.)
+  )
+  
+  saveRDS(df_lsocv_pmodel, file = filnam)
+    
+} else {
+  df_lsocv_pmodel <- readRDS("data/df_lsocv_pmodel.rds")
+}
+```
+
 ```{r}
 ## Add P-model results
+
+# Done first, but don't remember where I got the file out_lsocv.csv from
 df <- df |>
   left_join(
     read_csv("data/out_lsocv.csv") |>
       dplyr::select(sitename, date, pmodel = mod),
     by = c("sitename", "date"))
+
+# ## Done again with data obtained as explained above
+# df <- df |>
+#   left_join(
+#     df_lsocv_pmodel |>
+#       dplyr::select(sitename, date, pmodel),
+#     by = c("sitename", "date"))
 
 # ## Add re-calculated RF results (see randomforest.Rmd)
 # df_lsocv_rf <- read_rds("data/df_lsocv_rf.rds")
@@ -226,7 +268,13 @@ gg1 <- df_lsocv_metrics |>
   labs(x = bquote( "P-model" ~ italic(R)^2),
        y = bquote( "LSTM" ~ italic(R)^2),
        title = "LSTM") +
-  geom_text_repel(min.segment.length = 0, seed = 42, box.padding = 0.5)
+  geom_text_repel(min.segment.length = 0,
+                segment.size = 0.2,
+                width = 0.1,
+                size = 2,
+                seed = 42,
+                box.padding = 0.5,
+                color = "grey50")
 
 ## dnn
 gg2 <- df_lsocv_metrics |> 
@@ -238,7 +286,13 @@ gg2 <- df_lsocv_metrics |>
   labs(x = bquote( "P-model" ~ italic(R)^2),
        y = bquote( "DNN" ~ italic(R)^2),
        title = "DNN") +
-  geom_text_repel(min.segment.length = 0, seed = 42, box.padding = 0.5)
+  geom_text_repel(min.segment.length = 0,
+                segment.size = 0.2,
+                width = 0.1,
+                size = 2,
+                seed = 42,
+                box.padding = 0.5,
+                color = "grey50")
 
 # ## rf
 # gg3 <- df_lsocv_metrics |> 
@@ -408,6 +462,42 @@ cowplot::plot_grid(gg1, leftpanel,
                    ncol = 2
                    )
 ggsave("fig/site_eval.pdf", width = 12, height = 5)
+```
+
+Add environmental space-geographic space evaluation
+```{r}
+plot_map_simpl() +
+  geom_point(aes(lon, lat, color = rsq_lstm), data = tmp) +
+  scale_color_viridis_c()
+```
+
+```{r}
+# get MAT and MAP for all sites
+df_mat_map <- ingest(
+  siteinfo  = tmp |> 
+    select(sitename, lon, lat) |> 
+    mutate(year_start = 2000, year_end = 2014),
+  source    = "fluxnet",
+  getvars   = list(temp = "TA_F", 
+                   prec = "P_F"),
+  settings  = list(getswc = FALSE),
+  dir       = "~/data/FLUXNET-2015_Tier1/20191024/YY/",  # adjust this with your local path
+  timescale = "y",
+  verbose = TRUE
+  ) |> 
+  unnest(data) |> 
+  group_by(sitename) |> 
+  summarise(mat = mean(temp), map = mean(prec))
+
+tmp2 <- tmp |> 
+  left_join(df_mat_map, by = "sitename")
+
+library(plotbiomes)
+
+plotbiomes::whittaker_base_plot() +
+  geom_point(data = tmp2, aes(x = mat, y = map/10, size = rsq_lstm), alpha = 0.7) +
+  theme_classic() + 
+  scale_size(range = c(0, 3))
 ```
 
 #### All data pooled
@@ -624,7 +714,10 @@ df_season_kgclimate <- df |>
   dplyr::filter(koeppen_code != "-") |>
   mutate(kg_code_northsouth = paste(koeppen_code, northsouth)) |> 
   group_by(kg_code_northsouth, doy) |> 
-  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), lstm = mean(lstm_cond0, na.rm = TRUE), dnn = mean(dnn_cond0, na.rm = TRUE))
+  summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), 
+            lstm = mean(lstm_cond0, na.rm = TRUE), 
+            dnn = mean(dnn_cond0, na.rm = TRUE),
+            pmodel = mean(pmodel, na.rm = TRUE))
 ```
 
 Seasonal course by climate zone: LSTM works much better.
@@ -919,6 +1012,8 @@ Get site means
 ```{r}
 df_site <- df |> 
   mutate(doy = lubridate::yday(date)) |> 
+  select(sitename, GPP_NT_VUT_REF, lstm_cond0, dnn_cond0, pmodel) |> 
+  drop_na() |> 
   group_by(sitename) |> 
   summarise(obs = mean(GPP_NT_VUT_REF, na.rm = TRUE), 
             lstm = mean(lstm_cond0, na.rm = TRUE), 
@@ -1127,20 +1222,24 @@ df_ann |>
 ### Read files
 
 ```{r}
-## collect predictions of model trained on GRA, and predicting on DE-Hai. 
-## since DE-Hai is DBF, multiple models trained on GRA predicted DE-Hai, 
-## each one with a different GRA site held out from training.
-collect_otherveg_bysite_byveg <- function(otherveg, targetveg, targetsite){
+filn <- "data/bias_leave_vegtype_out_cv.rds"
+
+if (!file.exists(filn)){
+ 
+  ## collect predictions of model trained on GRA, and predicting on DE-Hai. 
+  ## since DE-Hai is DBF, multiple models trained on GRA predicted DE-Hai, 
+  ## each one with a different GRA site held out from training.
+  collect_otherveg_bysite_byveg <- function(otherveg, targetveg, targetsite){
+    
+    all_vegtypes <- c("DBF", "ENF", "GRA", "MF")
+    dfv <- tibble()
+    
+  }
   
   all_vegtypes <- c("DBF", "ENF", "GRA", "MF")
   dfv <- tibble()
   
-}
-
-all_vegtypes <- c("DBF", "ENF", "GRA", "MF")
-dfv <- tibble()
-
-for (targetveg in all_vegtypes){
+  for (targetveg in all_vegtypes){
 
   ## get all sites of this veg type
   all_sites <- list.files(path = paste0("data/leave_", targetveg, "_out")) |> 
@@ -1173,114 +1272,371 @@ for (targetveg in all_vegtypes){
         bind_rows( collect_otherveg_bysite_byveg(otherveg, targetveg, targetsite) )
 
     }
+  } 
   
-  }
+  write_rds(dfv, file = filn)
   
-  write_csv(dfv, file = filn)  
 } else {
-  dfv <- read_csv(filn)
+  dfv <- readRDS(filn)
 }
-
-saveRDS(dfv, file = "data/bias_leave_vegtype_out_cv.csv")
 ```
 
 ### Plot
 
-```{r}
-# dfv <- readRDS("data/bias_leave_vegtype_out_cv.csv")
-
-## Bias on DBF sites
-gg1 <- dfv |> 
-  filter(isveg == "DBF") |> 
-  ggplot(aes(x = bias, y = ..density.., color = trainedonveg)) +
-  geom_density() + 
-  geom_vline(xintercept = 0, linetype = "dotted") +
-  theme_classic() +
-  labs(title = "Bias on DBF sites", x = expression(paste("GPP bias (gC m"^-2, "d"^-1, ")"))) +
-  scale_color_jcolors(palette = "default", name = "Trained on")
-
-## Bias on GRA sites
-gg2 <- dfv |> 
-  filter(isveg == "GRA") |> 
-  ggplot(aes(x = bias, y = ..density.., color = trainedonveg)) +
-  geom_density() + 
-  geom_vline(xintercept = 0, linetype = "dotted") +
-  theme_classic() +
-  labs(title = "Bias on GRA sites", x = expression(paste("GPP bias (gC m"^-2, "d"^-1, ")"))) +
-  scale_color_jcolors(palette = "default", name = "Trained on")
-
-## Bias on ENF sites
-gg3 <- dfv |> 
-  filter(isveg == "ENF") |> 
-  ggplot(aes(x = bias, y = ..density.., color = trainedonveg)) +
-  geom_density() + 
-  geom_vline(xintercept = 0, linetype = "dotted") +
-  theme_classic() +
-  labs(title = "Bias on ENF sites", x = expression(paste("GPP bias (gC m"^-2, "d"^-1, ")"))) +
-  scale_color_jcolors(palette = "default", name = "Trained on")
-
-## Bias on MF sites
-gg4 <- dfv |> 
-  filter(isveg == "MF") |> 
-  ggplot(aes(x = bias, y = ..density.., color = trainedonveg)) +
-  geom_density() + 
-  geom_vline(xintercept = 0, linetype = "dotted") +
-  theme_classic() +
-  labs(title = "Bias on MF sites", x = expression(paste("GPP bias (gC m"^-2, "d"^-1, ")"))) +
-  scale_color_jcolors(palette = "default", name = "Trained on")
-
-plot_grid(gg1, gg2, gg3, gg4, nrow = 2, labels = c("a", "b", "c", "d"))
-ggsave("fig/leave_veg_out_cv.pdf", width = 10, height = 6)
-```
-
-#### Average bias
+Calculate RMSEs
 
 ```{r}
 rmse <- function(vec){
   sqrt( mean( (vec)^2, na.rm = TRUE) )
 }
 
-dfv |> 
+dfv_rmse <- dfv |> 
   filter(isveg == "DBF") |> 
   group_by(trainedonveg) |> 
-  summarise(rrmse_bias = rmse(bias)) |> 
+  summarise(rmse_bias = rmse(bias)) |> 
   mutate(targetveg = "DBF") |> 
   bind_rows(
     dfv |> 
       filter(isveg == "ENF") |> 
       group_by(trainedonveg) |> 
-      summarise(rrmse_bias = rmse(bias)) |> 
+      summarise(rmse_bias = rmse(bias)) |> 
       mutate(targetveg = "ENF")
   ) |> 
   bind_rows(
     dfv |> 
       filter(isveg == "GRA") |> 
       group_by(trainedonveg) |> 
-      summarise(rrmse_bias = rmse(bias)) |> 
+      summarise(rmse_bias = rmse(bias)) |> 
       mutate(targetveg = "GRA")
   ) |> 
   bind_rows(
     dfv |> 
       filter(isveg == "MF") |> 
       group_by(trainedonveg) |> 
-      summarise(rrmse_bias = rmse(bias)) |> 
+      summarise(rmse_bias = rmse(bias)) |> 
       mutate(targetveg = "MF")
+  ) |> 
+  select(Predict = targetveg, Trained = trainedonveg, RMSE = rmse_bias)
+```
+
+```{r}
+# dfv <- readRDS("data/bias_leave_vegtype_out_cv.csv")
+
+## add bias of the full model
+dfv <- dfv |> 
+  bind_rows(
+    df |> 
+      mutate(bias = lstm_cond0 - GPP_NT_VUT_REF) |> 
+      select(sitename, date, bias) |> 
+      mutate(trainedonveg = "ALL") |> 
+      left_join(
+        dfv |> 
+          select(sitename, isveg) |> 
+          unique(),
+        by = "sitename"
+      )
   )
+
+## Bias on DBF sites
+labs_rmse <- dfv_rmse |> 
+  mutate(lab_rmse = format(RMSE, digits = 3)) |> 
+  mutate(lab_rmse = paste0(Trained, ": ", lab_rmse)) |> 
+  filter(Predict == "DBF") |> 
+  pull(lab_rmse)
+
+gg1 <- dfv |> 
+  filter(isveg == "DBF") |> 
+  ggplot(aes(x = bias, y = ..density.., color = trainedonveg)) +
+  geom_density(size = 0.75) + 
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  annotate("text", x = -14, y = 0.45, label = "RMSE, trained on", hjust = 0) +
+  annotate("text", x = -14, y = seq(0.4, 0.2, length.out = 5), label = labs_rmse, colour = khroma::colour("okabe ito")(5), hjust = 0) +
+  theme_classic() +
+  ylim(0, 0.55) +
+  labs(title = "Bias on DBF sites", 
+       x = expression(paste("GPP bias (gC m"^-2, "d"^-1, ")"))) +
+  khroma::scale_color_okabeito(name = "Trained on")
+
+## Bias on GRA sites
+labs_rmse <- dfv_rmse |> 
+  mutate(lab_rmse = format(RMSE, digits = 3)) |> 
+  mutate(lab_rmse = paste0(Trained, ": ", lab_rmse)) |> 
+  filter(Predict == "GRA") |> 
+  pull(lab_rmse)
+
+gg2 <- dfv |> 
+  filter(isveg == "GRA") |> 
+  ggplot(aes(x = bias, y = ..density.., color = trainedonveg)) +
+  geom_density(size = 0.75) + 
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  annotate("text", x = -12, y = 0.45, label = "RMSE, trained on", hjust = 0) +
+  annotate("text", x = -12, y = seq(0.4, 0.2, length.out = 5), label = labs_rmse, colour = khroma::colour("okabe ito")(5), hjust = 0) +
+  theme_classic() +
+  ylim(0, 0.55) +
+  labs(title = "Bias on GRA sites", 
+       x = expression(paste("GPP bias (gC m"^-2, "d"^-1, ")"))) +
+  khroma::scale_color_okabeito(name = "Trained on")
+
+## Bias on ENF sites
+labs_rmse <- dfv_rmse |> 
+  mutate(lab_rmse = format(RMSE, digits = 3)) |> 
+  mutate(lab_rmse = paste0(Trained, ": ", lab_rmse)) |> 
+  filter(Predict == "ENF") |> 
+  pull(lab_rmse)
+
+gg3 <- dfv |> 
+  filter(isveg == "ENF") |> 
+  ggplot(aes(x = bias, y = ..density.., color = trainedonveg)) +
+  geom_density(size = 0.75) + 
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  annotate("text", x = -10, y = 0.45, label = "RMSE, trained on", hjust = 0) +
+  annotate("text", x = -10, y = seq(0.4, 0.2, length.out = 5), label = labs_rmse, colour = khroma::colour("okabe ito")(5), hjust = 0) +
+  theme_classic() +
+  ylim(0, 0.55) +
+  labs(title = "Bias on ENF sites", 
+       x = expression(paste("GPP bias (gC m"^-2, "d"^-1, ")"))) +
+  khroma::scale_color_okabeito(name = "Trained on")
+
+## Bias on MF sites
+labs_rmse <- dfv_rmse |> 
+  mutate(lab_rmse = format(RMSE, digits = 3)) |> 
+  mutate(lab_rmse = paste0(Trained, ": ", lab_rmse)) |> 
+  filter(Predict == "MF") |> 
+  pull(lab_rmse)
+
+gg4 <- dfv |> 
+  filter(isveg == "MF") |> 
+  ggplot(aes(x = bias, y = ..density.., color = trainedonveg)) +
+  geom_density(size = 0.75) + 
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  annotate("text", x = -12, y = 0.45, label = "RMSE, trained on", hjust = 0) +
+  annotate("text", x = -12, y = seq(0.4, 0.2, length.out = 5), label = labs_rmse, colour = khroma::colour("okabe ito")(5), hjust = 0) +
+  theme_classic() +
+  ylim(0, 0.55) +
+  labs(title = "Bias on MF sites", 
+       x = expression(paste("GPP bias (gC m"^-2, "d"^-1, ")"))) +
+  khroma::scale_color_okabeito(name = "Trained on")
+
+plot_grid(gg1, gg2, gg3, gg4, nrow = 2, labels = c("a", "b", "c", "d"))
+
+ggsave("fig/leave_veg_out_cv.pdf", width = 10, height = 6)
 ```
 
 
 ## LGOCV: Continent
 
-### Read files
+### NEW
+
+#### Bias on US sites
+```{r}
+targetcont <- "US"
+trainedoncont <- "non-US"
+files <- list.files(path = paste0("data/leave_", targetcont, "_out"), 
+                    pattern = "_out_bias",  # taking out-of-sample predictions from multiple models, each with a different non-US site held out 
+                    full.names = TRUE
+                    )
+heldoutsite <- str_sub(files, start = 19, end = 24)
+
+dfc_us_trainedon_nonus <- purrr::map2_dfr(
+  as.list(files),
+  as.list(heldoutsite),
+  ~read_delim(
+    .x, 
+    delim = "\t", 
+    col_names = c("sitename", "date", "bias"),
+    show_col_types = FALSE) |> 
+    mutate(heldout = .y)
+  ) |> 
+  group_by(sitename, date) |> 
+  summarise(bias = mean(bias)) |> 
+  mutate(trainedoncont = trainedoncont, targetcont = targetcont)
+
+# --------------------------------------------------
+targetcont <- "US"
+trainedoncont <- "US" # US and other non-European!!!
+
+files <- list.files(path = "data/leave_Europe_out", 
+                    pattern = "US.*_in_bias",    # taking only out-of-sample predictions for US sites where model was trained on US and other non-European sites
+                    full.names = TRUE
+                    )
+heldoutsite <- str_sub(files, start = 23, end = 28)
+
+dfc_us_trainedon_us <- purrr::map2_dfr(
+  as.list(files),
+  as.list(heldoutsite),
+  ~read_delim(
+    .x, 
+    delim = "\t", 
+    col_names = c("sitename", "date", "bias"),
+    show_col_types = FALSE) |> 
+    mutate(heldout = .y)
+  ) |> 
+  mutate(trainedoncont = trainedoncont, targetcont = targetcont)
+
+## plot
+dfc_us <- dfc_us_trainedon_us |> 
+  bind_rows(dfc_us_trainedon_nonus) |> 
+  bind_rows(
+    df |> 
+      mutate(bias = lstm_cond0 - GPP_NT_VUT_REF) |> 
+      select(sitename, date, bias) |> 
+      mutate(trainedoncont = "ALL", targetcont = "US", heldout = NA)
+  )
+
+tmp3 <- dfc_us |> 
+  mutate(square_error = bias^2) |> 
+  group_by(trainedoncont) |> 
+  summarise(mean_square_error = mean(square_error, na.rm = TRUE)) |> 
+  mutate(rmse = sqrt(mean_square_error), Predict = "US") |> 
+  select(Predict, Trained = trainedoncont, RMSE = rmse) |> 
+  mutate(lab_rmse = format(RMSE, digits = 3))
+  
+labs_rmse <- bind_rows(
+  tmp3[1,], tmp3[3,], tmp3[2,]
+  ) |> 
+  mutate(lab_rmse = paste0(Trained, ": ", lab_rmse)) |> 
+  pull(lab_rmse)
+
+gg1 <- dfc_us |> 
+  ggplot(aes(x = bias, y = ..density.., color = trainedoncont)) +
+  geom_density(size = 0.75) + 
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  annotate("text", x = -14, y = 0.45, label = "RMSE, trained on", hjust = 0) +
+  annotate("text", x = -14, y = seq(0.4, 0.3, length.out = 3), label = labs_rmse, colour = khroma::colour("okabe ito")(3), hjust = 0) +
+  theme_classic() +
+  ylim(0, 0.6) +
+  labs(title = "Bias on US sites", 
+       x = expression(paste("GPP bias (gC m"^-2, "d"^-1, ")"))) +
+  khroma::scale_color_okabeito(name = "Trained on")
+
+gg1
+```
+
+
+#### Bias on Europe sites
 
 ```{r}
-## collect predictions of model trained on 'othercont', and predicting on site in 'targetcont.' 
-## since this site is in 'targetcont', multiple models trained on 'othercont' predicted this site, 
+targetcont <- "Europe"
+trainedoncont <- "non-Europe"
+files <- list.files(path = paste0("data/leave_", targetcont, "_out"), 
+                    pattern = "_out_bias",  # taking out-of-sample predictions from multiple models, each with a different non-US site held out 
+                    full.names = TRUE
+                    )
+heldoutsite <- str_sub(files, start = 23, end = 28)
+
+dfc_eu_trainedon_noneu <- purrr::map2_dfr(
+  as.list(files),
+  as.list(heldoutsite),
+  ~read_delim(
+    .x, 
+    delim = "\t", 
+    col_names = c("sitename", "date", "bias"),
+    show_col_types = FALSE) |> 
+    mutate(heldout = .y)
+  ) |> 
+  group_by(sitename, date) |> 
+  summarise(bias = mean(bias)) |> 
+  mutate(trainedoncont = trainedoncont, targetcont = targetcont)
+
+# --------------------------------------------------
+targetcont <- "Europe"
+trainedoncont <- "Europe" # Europe and other non-US???
+
+files <- list.files(path = "data/leave_US_out", 
+                    pattern = "(BE|CH|CN|CZ|DE|DK|FI|FR|IT|NL|RU).*_in_bias",    # taking only out-of-sample predictions for European sites where model was trained on European and other non-US sites
+                    full.names = TRUE
+                    )
+heldoutsite <- str_sub(files, start = 19, end = 24)
+
+dfc_eu_trainedon_eu <- purrr::map2_dfr(
+  as.list(files),
+  as.list(heldoutsite),
+  ~read_delim(
+    .x, 
+    delim = "\t", 
+    col_names = c("sitename", "date", "bias"),
+    show_col_types = FALSE) |> 
+    mutate(heldout = .y)
+  ) |> 
+  mutate(trainedoncont = trainedoncont, targetcont = targetcont)
+
+## plot
+dfc_eu <- dfc_eu_trainedon_noneu |> 
+  bind_rows(dfc_eu_trainedon_eu) |> 
+  bind_rows(
+    df |> 
+      mutate(bias = lstm_cond0 - GPP_NT_VUT_REF) |> 
+      select(sitename, date, bias) |> 
+      mutate(trainedoncont = "ALL", targetcont = "US", heldout = NA)
+  ) 
+
+labs_rmse <- dfc_eu |> 
+  mutate(square_error = bias^2) |> 
+  group_by(trainedoncont) |> 
+  summarise(mean_square_error = mean(square_error, na.rm = TRUE)) |> 
+  mutate(rmse = sqrt(mean_square_error), Predict = "Europe") |> 
+  select(Predict, Trained = trainedoncont, RMSE = rmse) |> 
+  mutate(lab_rmse = format(RMSE, digits = 3)) |> 
+  mutate(lab_rmse = paste0(Trained, ": ", lab_rmse)) |> 
+  pull(lab_rmse)
+
+gg2 <- dfc_eu |> 
+  ggplot(aes(x = bias, y = ..density.., color = trainedoncont)) +
+  geom_density(size = 0.75) + 
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  annotate("text", x = -14, y = 0.45, label = "RMSE, trained on", hjust = 0) +
+  annotate("text", x = -14, y = seq(0.4, 0.3, length.out = 3), label = labs_rmse, colour = khroma::colour("okabe ito")(3), hjust = 0) +
+  ylim(0, 0.6) +
+  theme_classic() +
+  labs(title = "Bias on European sites", 
+       x = expression(paste("GPP bias (gC m"^-2, "d"^-1, ")"))) +
+  khroma::scale_color_okabeito(name = "Trained on")
+
+gg2
+```
+
+Combine plots
+```{r}
+cowplot::plot_grid(gg1, gg2, labels = c("a", "b"))
+ggsave("fig/leave_cont_out_cv.pdf", width = 10, height = 3)
+```
+
+Root mean square errors of continent-LGOCV.
+
+```{r}
+# predicting on European:
+dfc_eu |> 
+  mutate(square_error = bias^2) |> 
+  group_by(trainedoncont) |> 
+  summarise(mean_square_error = mean(square_error, na.rm = TRUE)) |> 
+  mutate(rmse = sqrt(mean_square_error), Predict = "Europe") |> 
+  select(Predict, Trained = trainedoncont, RMSE = rmse) |> 
+  bind_rows(
+    dfc_us |> 
+      mutate(square_error = bias^2) |> 
+      group_by(trainedoncont) |> 
+      summarise(mean_square_error = mean(square_error, na.rm = TRUE)) |> 
+      mutate(rmse = sqrt(mean_square_error), Predict = "US") |> 
+      select(Predict, Trained = trainedoncont, RMSE = rmse)
+  )
+```
+
+
+
+### OLD
+
+#### Read files
+```{r}
+## collect predictions of model trained on 'othercont', and predicting on 
+## site in 'targetcont.' 
+## since this site is in 'targetcont', multiple models trained on 'othercont' 
+## predicted this site, 
 ## each one with a different site in 'othercont' held out from training.
 collect_othercont_bysite <- function(targetcont, othercont, targetsite){
   
   purrr::map_dfr(
-    as.list(list.files(path = paste0("data/leave_", targetcont, "_out"), pattern = "_out_bias")),
+    as.list(list.files(path = paste0("data/leave_", targetcont, "_out"), 
+                       pattern = "_out_bias")),
     ~read_delim(
       paste0("data/leave_", targetcont, "_out/", .), 
       delim = "\t", 
@@ -1294,7 +1650,7 @@ collect_othercont_bysite <- function(targetcont, othercont, targetsite){
   
 }
 
-all_conttypes <- c("US", "Europe")
+all_conttypes <- c("US", "Europe")    # "Europe" contains also Australian, ...
 dfc <- tibble()
 
 for (targetcont in all_conttypes){
@@ -1316,7 +1672,8 @@ for (targetcont in all_conttypes){
 
       print(paste("targetsite:", targetsite))
       
-      ## collect predictions of model trained on remaining sites of the same cont (targetcont)
+      ## collect predictions of model trained on remaining sites 
+      ## of the same cont (targetcont)
       dfc <- dfc |> 
         bind_rows(
           read_delim(
@@ -1350,12 +1707,12 @@ for (targetcont in all_conttypes){
 saveRDS(dfc, file = "data/bias_leave_cont_out_cv.csv")
 ```
 
-### Plot
+#### Plot
 
 ```{r}
 rmse <- function(vec){sqrt(mean(vec^2, na.rm = TRUE))}
 
-# dfv <- readRDS("data/bias_leave_cont_out_cv.csv")
+dfc <- readRDS("data/bias_leave_cont_out_cv.csv")
 
 rmse_bias_trainedon_us <- dfc |> 
   filter(iscont == "US", trainedoncont == "US") |> 
@@ -1370,8 +1727,9 @@ rmse_bias_trainedon_eu <- dfc |>
 ## Bias on US sites
 gg1 <- dfc |> 
   filter(iscont == "US") |> 
-  ggplot(aes(x = bias, y = ..density.., fill = trainedoncont, alpha = 0.5)) +
-  geom_density() + 
+  mutate(trainedoncont = ifelse(trainedoncont == "Europe", "Non-US", trainedoncont)) |> 
+  ggplot(aes(x = bias, y = ..density.., color = trainedoncont)) +
+  geom_density(size = 0.75) + 
   geom_vline(xintercept = 0, linetype = "dotted") +
   theme_classic() +
   labs(title = "Bias on US sites", 
@@ -1380,7 +1738,7 @@ gg1 <- dfc |>
                         "\nRMSE trained on non-US:", 
                         format(rmse_bias_trainedon_eu, digits = 3)), 
        x = expression(paste("GPP bias (gC m"^-2, "d"^-1, ")"))) +
-  scale_fill_jcolors(palette = "default", name = "Trained on")
+  khroma::scale_color_okabeito(name = "Trained on")
 
 tmp <- df |> 
   mutate(bias = lstm_cond0 - GPP_NT_VUT_REF,
@@ -1397,8 +1755,8 @@ rmse_bias_eu <- tmp |>
   rmse()
 
 gg2 <- tmp |>  
-  ggplot(aes(x = bias, y = ..density.., fill = cont, alpha = 0.5)) +
-  geom_density() + 
+  ggplot(aes(x = bias, y = ..density.., color = trainedoncont)) +
+  geom_density(size = 0.75) + 
   geom_vline(xintercept = 0, linetype = "dotted") +
   theme_classic() +
   labs(title = "Bias of LSOCV", 
@@ -1407,10 +1765,11 @@ gg2 <- tmp |>
                         "\nRMSE of non-US:", 
                         format(rmse_bias_eu, digits = 3)),
        x = expression(paste("GPP bias (gC m"^-2, "d"^-1, ")"))) +
-  scale_fill_jcolors(palette = "default", name = "Continent")
+  khroma::scale_color_okabeito(name = "Continent")
 
 plot_grid(gg1, gg2, ncol = 2, labels = c("a", "b"))
-ggsave("fig/leave_veg_out_cv.pdf", width = 10, height = 3)
+
+ggsave("fig/leave_cont_out_cv.pdf", width = 10, height = 3)
 ```
 
 

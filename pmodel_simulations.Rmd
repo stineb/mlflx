@@ -60,8 +60,6 @@ if (!file.exists(filn)){
   df_cru <- readRDS(filn)
 }
 
-
-
 ## add it to other data
 df <- df %>% 
   left_join(
