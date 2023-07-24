@@ -492,12 +492,24 @@ df_mat_map <- ingest(
 tmp2 <- tmp |> 
   left_join(df_mat_map, by = "sitename")
 
-library(plotbiomes)
+write_csv(tmp2, file = paste0(here::here(), "/data/df_sites_metainfo.csv"))
 
-plotbiomes::whittaker_base_plot() +
-  geom_point(data = tmp2, aes(x = mat, y = map/10, size = rsq_lstm), alpha = 0.7) +
+gg1 <- rbeni::plot_map_simpl() +
+  geom_point(data = tmp2, 
+             aes(x = lon, y = lat, fill = classid), 
+             shape = 21, 
+             color = "black") +
+  scale_fill_brewer(palette = "Paired", name = "Vegetation type")
+  # khroma::scale_fill_okabeito(name = "Vegetation type")
+  # scale_colour_manual(values = myjcolors(length(unique(df_sites$classid))), name = "Vegetation type")
+
+gg2 <- plotbiomes::whittaker_base_plot() +
+  geom_point(data = tmp2, aes(x = mat, y = map/10), alpha = 0.6, size = 2) +
   theme_classic() + 
   scale_size(range = c(0, 3))
+
+cowplot::plot_grid(gg1, gg2, ncol = 1, labels = c("a", "b"), rel_heights = c(0.6, 1))
+ggsave(paste0(here::here(), "/fig/map_biomes_sites_mlflx.pdf"), width = 8, height = 8)
 ```
 
 #### All data pooled

@@ -28,7 +28,7 @@ Reproduce it as follows:
 
 Get sites where fLUE data is available
 ```{r}
-df_sites <- read_csv("~/data/flue/flue_stocker18nphyt.csv")  # dataset available here: https://zenodo.org/record/1158524#.YFn9fkhKjUI
+df_sites <- read_csv("~/data/archive_legacy/flue/flue_stocker18nphyt.csv")  # dataset available here: https://zenodo.org/record/1158524#.YFn9fkhKjUI
 df_sites <- dplyr::select(df_sites, site, cluster) %>% unique()
 ```
 
@@ -60,14 +60,17 @@ Show sites on a map.
 ```{r}
 df_sites <- read_csv("./data/df_sites_mlflx.csv")
 
-plot_map_simpl() +
-  geom_point(data = df_sites, aes(x = lon, y = lat, color = classid)) +
+gg1 <- plot_map_simpl() +
+  geom_point(data = df_sites, aes(x = lon, y = lat, fill = classid), shape = 21, color = "black") +
   # scale_color_jcolors(palette = "pal8")
   scale_color_brewer(palette = "Paired", name = "Vegetation type")
   # scale_colour_manual(values = myjcolors(length(unique(df_sites$classid))), name = "Vegetation type")
 
+gg1
 ggsave("fig/map_sites_mlflx.pdf", width = 10, height = 5)
 ```
+
+
 
 ## FLUXNET data
 
